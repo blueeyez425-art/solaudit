@@ -2,10 +2,14 @@
   "name": "solaudit",
   "version": "0.1.0",
   "description": "Open-source static analysis CLI for Anchor/Solana programs",
+  "type": "module",
   "bin": { "solaudit": "./dist/cli.js" },
   "main": "./dist/index.js",
+  "files": ["dist", "examples", "README.md", "LICENSE"],
+  "engines": { "node": ">=18" },
   "scripts": {
-    "build": "bun build src/cli.ts --outdir dist --target node",
+    "build": "bun build src/cli.ts --outdir dist --target node --sourcemap=none",
+    "prepublishOnly": "npm run build",
     "start": "bun src/cli.ts",
     "test": "bun test"
   },
