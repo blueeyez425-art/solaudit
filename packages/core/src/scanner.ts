@@ -2,9 +2,12 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Finding, Rule, ScanResult } from "./types";
 
-/** Run every rule against a single file's contents. */
-export function scanFile(filePath: string, rules: Rule[]): Finding[] {
-  const content = readFileSync(filePath, "utf8");
+/**
+ * Run every rule against source that is already in memory (no filesystem access).
+ * This is the core primitive used by both `scanFile` (CLI, reads from disk) and the
+ * web app (fetches file content from GitHub's API or a browser file upload).
+ */
+export function scanContent(content: string, filePath: string, rules: Rule[]): Finding[] {
   const findings: Finding[] = [];
 
   for (const rule of rules) {
@@ -18,6 +21,12 @@ export function scanFile(filePath: string, rules: Rule[]): Finding[] {
   }
 
   return findings.sort((a, b) => a.line - b.line);
+}
+
+/** Run every rule against a single file's contents, read from disk. */
+export function scanFile(filePath: string, rules: Rule[]): Finding[] {
+  const content = readFileSync(filePath, "utf8");
+  return scanContent(content, filePath, rules);
 }
 
 function walk(dirPath: string, files: string[] = []): string[] {
@@ -69,6 +78,22 @@ function tallySummary(findings: Finding[]): ScanResult["summary"] {
   return summary;
 }
 
+function sortAndSummarize(rsFileCount: number, allFindings: Finding[]): ScanResult {
+  const severityOrder: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
+  allFindings.sort((a, b) => {
+    const sev = severityOrder[a.severity] - severityOrder[b.severity];
+    if (sev !== 0) return sev;
+    if (a.filePath !== b.filePath) return a.filePath.localeCompare(b.filePath);
+    return a.line - b.line;
+  });
+
+  return {
+    scannedFiles: rsFileCount,
+    findings: allFindings,
+    summary: tallySummary(allFindings),
+  };
+}
+
 /** Recursively scan a directory (or a single file) for .rs files and aggregate findings. */
 export async function scanDirectory(targetPath: string, rules: Rule[]): Promise<ScanResult> {
   const stat = statSync(targetPath);
@@ -80,17 +105,24 @@ export async function scanDirectory(targetPath: string, rules: Rule[]): Promise<
     allFindings.push(...scanFile(file, rules));
   }
 
-  const severityOrder: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, INFO: 4 };
-  allFindings.sort((a, b) => {
-    const sev = severityOrder[a.severity] - severityOrder[b.severity];
-    if (sev !== 0) return sev;
-    if (a.filePath !== b.filePath) return a.filePath.localeCompare(b.filePath);
-    return a.line - b.line;
-  });
+  return sortAndSummarize(rsFiles.length, allFindings);
+}
 
-  return {
-    scannedFiles: rsFiles.length,
-    findings: allFindings,
-    summary: tallySummary(allFindings),
-  };
+export interface InMemoryFile {
+  path: string;
+  content: string;
+}
+
+/**
+ * Scan a set of in-memory .rs files (e.g. fetched from the GitHub API or uploaded
+ * via a browser). Used by the web app, which has no local filesystem to walk.
+ */
+export function scanFiles(files: InMemoryFile[], rules: Rule[]): ScanResult {
+  const allFindings: Finding[] = [];
+
+  for (const file of files) {
+    allFindings.push(...scanContent(file.content, file.path, rules));
+  }
+
+  return sortAndSummarize(files.length, allFindings);
 }

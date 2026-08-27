@@ -1,9 +1,6 @@
 #!/usr/bin/env node
-import { rules } from "./rules/index";
-import { scanDirectory } from "./scanner";
-import { printReport } from "./output/report";
-import { toSarif } from "./output/sarif";
-import type { Severity } from "./types";
+import { rules, scanDirectory, printReport, toSarif } from "@solaudit/core";
+import type { Severity } from "@solaudit/core";
 
 const SEVERITY_RANK: Record<Severity, number> = {
   CRITICAL: 0,

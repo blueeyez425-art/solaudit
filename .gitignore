@@ -2,3 +2,18 @@ node_modules/
 dist/
 *.log
 .DS_Store
+
+# Next.js
+web/.next/
+web/out/
+web/.env
+web/.env.local
+web/next-env.d.ts
+
+# misc
+.vercel
+
+# generated at publish time by cli/package.json's prepublishOnly script
+cli/examples/
+cli/README.md
+cli/LICENSE

@@ -1,41 +1,17 @@
 {
-  "name": "solaudit",
-  "version": "0.1.0",
-  "description": "Open-source static analysis CLI for Anchor/Solana programs",
-  "type": "module",
-  "bin": {
-    "solaudit": "dist/cli.js"
-  },
-  "main": "./dist/index.js",
-  "files": [
-    "dist",
-    "examples",
-    "README.md",
-    "LICENSE"
+  "name": "solaudit-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*",
+    "cli",
+    "web"
   ],
-  "engines": {
-    "node": ">=18"
-  },
   "scripts": {
-    "build": "bun build src/cli.ts --outdir dist --target node --sourcemap=none",
-    "prepublishOnly": "npm run build",
-    "start": "bun src/cli.ts",
-    "test": "bun test"
+    "test": "cd packages/core && bun test",
+    "build:cli": "cd cli && bun run build",
+    "dev:web": "cd web && bun run dev",
+    "build:web": "cd web && bun run build"
   },
-  "keywords": [
-    "solana",
-    "anchor",
-    "security",
-    "static-analysis",
-    "audit"
-  ],
-  "license": "MIT",
-  "author": "Cody Pack",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/blueeyez425-art/solaudit.git"
-  },
-  "devDependencies": {
-    "bun-types": "latest"
-  }
+  "license": "MIT"
 }

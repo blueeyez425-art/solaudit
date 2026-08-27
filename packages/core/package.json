@@ -1,0 +1,15 @@
+{
+  "name": "@solaudit/core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared scanning engine (rules, scanner, output formatters) for the SolAudit CLI and web app",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  }
+}
