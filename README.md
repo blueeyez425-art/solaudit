@@ -90,6 +90,24 @@ cd web
 bun run dev
 ```
 
+## Deployed program analysis (proof of concept)
+
+SolAudit's CLI can also analyze a program that's already deployed on-chain, by address — not just local source:
+
+```bash
+solaudit --program <address>
+solaudit --program <address> --cluster devnet --json
+```
+
+This combines two real signals rather than attempting full bytecode reverse-engineering (a much larger, separate research problem, out of scope here):
+
+1. **On-chain upgrade authority check** — always available, no source required. Determines whether the deployed program is upgradeable, and if so, which account can silently replace its code at any time (a well-documented, real Solana risk).
+2. **Verified source-level scanning** — if the program's developer published a [verified build](https://solana.com/docs/programs/verified-builds) (checked against [OtterSec's public registry](https://verify.osec.io)), SolAudit fetches the exact matching public GitHub source and runs the same full rule engine against it as a local scan.
+
+Unverified programs still get the on-chain upgrade-authority analysis; the missing source-level coverage is reported explicitly as a warning rather than silently omitted.
+
+This is an early proof of concept — validated against real mainnet programs (e.g. Phoenix v1, SPL Token), but not yet as battle-tested as the local-source scanner.
+
 ## Rules
 
 | ID | Severity | Name | What it catches |
