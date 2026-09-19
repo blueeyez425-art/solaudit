@@ -1,0 +1,214 @@
+{
+  "generatedAt": "2026-09-19T02:24:58.127Z",
+  "aggregate": {
+    "truePositives": 13,
+    "falsePositives": 1,
+    "falseNegatives": 0,
+    "precision": 0.9285714285714286,
+    "recall": 1,
+    "f1": 0.962962962962963
+  },
+  "knownGaps": {
+    "total": 3,
+    "correctlyEmpty": 2
+  },
+  "samples": [
+    {
+      "file": "sol-001-vulnerable.rs",
+      "expectedRuleIds": [
+        "SOL-001",
+        "SOL-008"
+      ],
+      "foundRuleIds": [
+        "SOL-008",
+        "SOL-001"
+      ],
+      "truePositives": [
+        "SOL-001",
+        "SOL-008"
+      ],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": false,
+      "vulnClass": "missing-signer-check"
+    },
+    {
+      "file": "sol-001-safe.rs",
+      "expectedRuleIds": [],
+      "foundRuleIds": [],
+      "truePositives": [],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": false,
+      "vulnClass": "none"
+    },
+    {
+      "file": "sol-002-vulnerable.rs",
+      "expectedRuleIds": [
+        "SOL-002",
+        "SOL-008"
+      ],
+      "foundRuleIds": [
+        "SOL-002",
+        "SOL-008"
+      ],
+      "truePositives": [
+        "SOL-002",
+        "SOL-008"
+      ],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": false,
+      "vulnClass": "unchecked-account-deserialization"
+    },
+    {
+      "file": "sol-003-vulnerable.rs",
+      "expectedRuleIds": [
+        "SOL-003",
+        "SOL-008"
+      ],
+      "foundRuleIds": [
+        "SOL-008",
+        "SOL-003"
+      ],
+      "truePositives": [
+        "SOL-003",
+        "SOL-008"
+      ],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": false,
+      "vulnClass": "arbitrary-cpi"
+    },
+    {
+      "file": "sol-004-vulnerable.rs",
+      "expectedRuleIds": [
+        "SOL-004",
+        "SOL-008"
+      ],
+      "foundRuleIds": [
+        "SOL-004",
+        "SOL-008"
+      ],
+      "truePositives": [
+        "SOL-004",
+        "SOL-008"
+      ],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": false,
+      "vulnClass": "missing-bump-canonicalization"
+    },
+    {
+      "file": "sol-005-vulnerable.rs",
+      "expectedRuleIds": [
+        "SOL-005"
+      ],
+      "foundRuleIds": [
+        "SOL-005"
+      ],
+      "truePositives": [
+        "SOL-005"
+      ],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": false,
+      "vulnClass": "integer-overflow"
+    },
+    {
+      "file": "sol-006-vulnerable.rs",
+      "expectedRuleIds": [
+        "SOL-006",
+        "SOL-008"
+      ],
+      "foundRuleIds": [
+        "SOL-008",
+        "SOL-006"
+      ],
+      "truePositives": [
+        "SOL-006",
+        "SOL-008"
+      ],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": false,
+      "vulnClass": "type-cosplay"
+    },
+    {
+      "file": "sol-007-vulnerable.rs",
+      "expectedRuleIds": [
+        "SOL-007"
+      ],
+      "foundRuleIds": [
+        "SOL-007"
+      ],
+      "truePositives": [
+        "SOL-007"
+      ],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": false,
+      "vulnClass": "insecure-account-initialization"
+    },
+    {
+      "file": "sol-008-vulnerable.rs",
+      "expectedRuleIds": [
+        "SOL-008"
+      ],
+      "foundRuleIds": [
+        "SOL-008"
+      ],
+      "truePositives": [
+        "SOL-008"
+      ],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": false,
+      "vulnClass": "missing-owner-check"
+    },
+    {
+      "file": "gap-001-closed-account-revival.rs",
+      "expectedRuleIds": [],
+      "foundRuleIds": [],
+      "truePositives": [],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": true,
+      "vulnClass": "closed-account-revival"
+    },
+    {
+      "file": "gap-002-duplicate-mutable-accounts.rs",
+      "expectedRuleIds": [],
+      "foundRuleIds": [
+        "SOL-001"
+      ],
+      "truePositives": [],
+      "falsePositives": [
+        "SOL-001"
+      ],
+      "falseNegatives": [],
+      "isKnownGap": true,
+      "vulnClass": "duplicate-mutable-accounts"
+    },
+    {
+      "file": "gap-003-missing-rent-exempt-check.rs",
+      "expectedRuleIds": [],
+      "foundRuleIds": [],
+      "truePositives": [],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": true,
+      "vulnClass": "missing-rent-exemption-check"
+    },
+    {
+      "file": "clean-001-well-audited.rs",
+      "expectedRuleIds": [],
+      "foundRuleIds": [],
+      "truePositives": [],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": false,
+      "vulnClass": "none"
+    }
+  ]
+}

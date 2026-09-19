@@ -1,0 +1,190 @@
+{
+  "generatedAt": "2026-09-19T02:24:19.025Z",
+  "model": "command-a-03-2025",
+  "aggregate": {
+    "ruleCoveredAgreement": "10/10",
+    "knownGapsCaught": "3/3"
+  },
+  "samples": [
+    {
+      "file": "sol-001-vulnerable.rs",
+      "vulnClass": "missing-signer-check",
+      "isKnownGap": false,
+      "modelFindings": [
+        {
+          "vulnClass": "missing-signer-check",
+          "severity": "CRITICAL",
+          "line": 18,
+          "description": "The `authority` account is not checked as a signer, allowing anyone to drain funds from the vault without proper authorization."
+        }
+      ],
+      "caughtExpectedClass": true
+    },
+    {
+      "file": "sol-001-safe.rs",
+      "vulnClass": "none",
+      "isKnownGap": false,
+      "modelFindings": [],
+      "caughtExpectedClass": true
+    },
+    {
+      "file": "sol-002-vulnerable.rs",
+      "vulnClass": "unchecked-account-deserialization",
+      "isKnownGap": false,
+      "modelFindings": [
+        {
+          "vulnClass": "unchecked-account-deserialization",
+          "severity": "HIGH",
+          "line": 14,
+          "description": "The escrow state account is manually deserialized without validating its owner or discriminator, allowing an attacker to pass an account owned by a different program and potentially exploit deserialized data."
+        }
+      ],
+      "caughtExpectedClass": true
+    },
+    {
+      "file": "sol-003-vulnerable.rs",
+      "vulnClass": "arbitrary-cpi",
+      "isKnownGap": false,
+      "modelFindings": [
+        {
+          "vulnClass": "arbitrary-cpi",
+          "severity": "CRITICAL",
+          "line": 17,
+          "description": "The `target_program` account is not checked against a known program ID, allowing an attacker to specify any program and execute arbitrary instructions with the vault's signing authority."
+        }
+      ],
+      "caughtExpectedClass": true
+    },
+    {
+      "file": "sol-004-vulnerable.rs",
+      "vulnClass": "missing-bump-canonicalization",
+      "isKnownGap": false,
+      "modelFindings": [
+        {
+          "vulnClass": "missing-bump-canonicalization",
+          "severity": "CRITICAL",
+          "line": 15,
+          "description": "The bump seed is supplied by the caller and not derived or canonicalized, allowing attackers to forge authority over unintended PDAs."
+        }
+      ],
+      "caughtExpectedClass": true
+    },
+    {
+      "file": "sol-005-vulnerable.rs",
+      "vulnClass": "integer-overflow",
+      "isKnownGap": false,
+      "modelFindings": [
+        {
+          "vulnClass": "integer-overflow",
+          "severity": "CRITICAL",
+          "line": 14,
+          "description": "Unchecked arithmetic operations on `total_staked` and `total_shares` can lead to integer overflow, potentially allowing attackers to mint phantom shares or corrupt the pool's accounting."
+        }
+      ],
+      "caughtExpectedClass": true
+    },
+    {
+      "file": "sol-006-vulnerable.rs",
+      "vulnClass": "type-cosplay",
+      "isKnownGap": false,
+      "modelFindings": [
+        {
+          "vulnClass": "unchecked-account-deserialization",
+          "severity": "CRITICAL",
+          "line": 16,
+          "description": "Direct deserialization of raw bytes from an untyped account without a discriminator check or typed wrapper allows type cosplay attacks."
+        },
+        {
+          "vulnClass": "type-cosplay",
+          "severity": "CRITICAL",
+          "line": 16,
+          "description": "Shared byte layout between `UserPosition` and `AdminPosition` enables users to pass their own `UserPosition` account, bypassing admin-only checks."
+        },
+        {
+          "vulnClass": "missing-owner-check",
+          "severity": "HIGH",
+          "line": null,
+          "description": "Lack of owner validation on the `position` account allows any account to be passed, potentially leading to unauthorized access."
+        }
+      ],
+      "caughtExpectedClass": true
+    },
+    {
+      "file": "sol-007-vulnerable.rs",
+      "vulnClass": "insecure-account-initialization",
+      "isKnownGap": false,
+      "modelFindings": [
+        {
+          "vulnClass": "insecure-account-initialization",
+          "severity": "CRITICAL",
+          "line": 19,
+          "description": "The `entry` account is initialized without specifying the `space` constraint, leading to undefined account allocation behavior."
+        }
+      ],
+      "caughtExpectedClass": true
+    },
+    {
+      "file": "sol-008-vulnerable.rs",
+      "vulnClass": "missing-owner-check",
+      "isKnownGap": false,
+      "modelFindings": [
+        {
+          "vulnClass": "missing-owner-check",
+          "severity": "CRITICAL",
+          "line": 15,
+          "description": "The `price_feed` account lacks owner validation, allowing any account to be passed in, potentially leading to manipulated price data."
+        }
+      ],
+      "caughtExpectedClass": true
+    },
+    {
+      "file": "gap-001-closed-account-revival.rs",
+      "vulnClass": "closed-account-revival",
+      "isKnownGap": true,
+      "modelFindings": [
+        {
+          "vulnClass": "closed-account-revival",
+          "severity": "CRITICAL",
+          "line": 20,
+          "description": "The `close_position` function fails to zero the account's discriminator and reassign its owner, allowing an attacker to revive the 'closed' account and potentially reclaim withdrawn funds."
+        }
+      ],
+      "caughtExpectedClass": true
+    },
+    {
+      "file": "gap-002-duplicate-mutable-accounts.rs",
+      "vulnClass": "duplicate-mutable-accounts",
+      "isKnownGap": true,
+      "modelFindings": [
+        {
+          "vulnClass": "duplicate-mutable-accounts",
+          "severity": "HIGH",
+          "line": null,
+          "description": "The `swap` function allows the same token account to be passed as both `account_a` and `account_b`, enabling potential balance manipulation."
+        }
+      ],
+      "caughtExpectedClass": true
+    },
+    {
+      "file": "gap-003-missing-rent-exempt-check.rs",
+      "vulnClass": "missing-rent-exemption-check",
+      "isKnownGap": true,
+      "modelFindings": [
+        {
+          "vulnClass": "missing-rent-exemption-check",
+          "severity": "HIGH",
+          "line": 17,
+          "description": "The `partial_withdraw` function allows withdrawing lamports from the `vault` account without ensuring the remaining balance stays above the rent-exemption minimum, potentially leading to account closure and loss of state."
+        }
+      ],
+      "caughtExpectedClass": true
+    },
+    {
+      "file": "clean-001-well-audited.rs",
+      "vulnClass": "none",
+      "isKnownGap": false,
+      "modelFindings": [],
+      "caughtExpectedClass": true
+    }
+  ]
+}
