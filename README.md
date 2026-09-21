@@ -9,7 +9,7 @@
 SolAudit reads `.rs` source files, applies a set of pattern-matching security rules (missing signer checks, arbitrary CPIs, unchecked deserialization, integer overflow, and more), and gives you an actionable report in seconds — no RPC calls, no wallet, no build step required to run it.
 
 - **CLI** — `npx solaudit ./program`, for local development and CI.
-- **Web app** — paste a public GitHub repo URL or upload a single `.rs` file, no install required.
+- **Web app** — [solaudit-web.vercel.app](https://solaudit-web.vercel.app/) — paste a public GitHub repo URL or upload a single `.rs` file, no install required.
 
 ---
 
@@ -74,7 +74,7 @@ Exit code is `1` when any `CRITICAL` or `HIGH` finding is present — making Sol
 
 ## Web app
 
-Live at the deployed Vercel URL (see repo description). No CLI, no local Anchor toolchain, no wallet required:
+**Live at [solaudit-web.vercel.app](https://solaudit-web.vercel.app/)** — no CLI, no local Anchor toolchain, no wallet required:
 
 1. Paste a public GitHub repo URL **or** upload a single `.rs` file.
 2. The server fetches `.rs` files via GitHub's API (no `git clone`) and scans them with the exact same engine as the CLI.
