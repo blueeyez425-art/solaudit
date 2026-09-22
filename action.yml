@@ -1,0 +1,56 @@
+name: 'SolAudit'
+description: 'Static analysis for Solana/Anchor programs. Scans for common on-chain vulnerability patterns and can upload results to GitHub code scanning.'
+author: 'Cody Pack'
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+inputs:
+  path:
+    description: 'File or directory to scan.'
+    required: false
+    default: '.'
+  min-severity:
+    description: 'Only report findings at or above this severity (CRITICAL | HIGH | MEDIUM | LOW | INFO).'
+    required: false
+    default: 'INFO'
+  fail-on-findings:
+    description: 'Fail this step if any CRITICAL or HIGH severity finding is present, regardless of min-severity.'
+    required: false
+    default: 'true'
+  upload-sarif:
+    description: 'Upload SARIF results to GitHub code scanning. Requires the security-events: write permission on the job.'
+    required: false
+    default: 'true'
+
+outputs:
+  sarif-file:
+    description: 'Path to the generated SARIF file, when upload-sarif is enabled.'
+    value: ${{ steps.scan-sarif.outputs.sarif-file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run SolAudit
+      shell: bash
+      run: npx --yes solaudit@0.2.0 "${{ inputs.path }}" --min-severity "${{ inputs['min-severity'] }}"
+      continue-on-error: true
+
+    - name: Generate SARIF report
+      id: scan-sarif
+      if: ${{ inputs['upload-sarif'] == 'true' }}
+      shell: bash
+      run: |
+        npx --yes solaudit@0.2.0 "${{ inputs.path }}" --sarif > solaudit-results.sarif
+        echo "sarif-file=solaudit-results.sarif" >> "$GITHUB_OUTPUT"
+
+    - name: Upload SARIF to GitHub code scanning
+      if: ${{ inputs['upload-sarif'] == 'true' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: solaudit-results.sarif
+
+    - name: Enforce CRITICAL/HIGH findings gate
+      if: ${{ inputs['fail-on-findings'] == 'true' }}
+      shell: bash
+      run: npx --yes solaudit@0.2.0 "${{ inputs.path }}" --min-severity HIGH

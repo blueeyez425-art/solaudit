@@ -113,25 +113,43 @@ Each rule is implemented as real regex/line-scanning logic in [`packages/core/sr
 
 ## GitHub Actions
 
-Add SolAudit to your own project's CI so every push and PR is scanned automatically:
+SolAudit ships as a ready-to-use [GitHub Action](./action.yml). Drop this into `.github/workflows/solaudit.yml` in your own repo and every push/PR gets scanned automatically, with results uploaded straight to your repo's Security tab:
 
 ```yaml
 name: SolAudit
 
 on: [push, pull_request]
 
+permissions:
+  contents: read
+  security-events: write   # required to upload SARIF results
+
 jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npx solaudit ./programs --sarif > results.sarif
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: blueeyez425-art/solaudit@main
         with:
-          sarif_file: results.sarif
+          path: ./programs        # file or directory to scan (default: .)
+          min-severity: INFO      # lowest severity to report (default: INFO)
+          fail-on-findings: true  # fail the build on any CRITICAL/HIGH finding (default: true)
+          upload-sarif: true      # upload results to code scanning (default: true)
 ```
 
-This repository's own [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs the full test suite, builds the CLI and web app, and scans `examples/vulnerable.rs` on every push.
+No `security-events: write` permission in your workflow? Set `upload-sarif: false` and the action will still run the scan and fail the build on CRITICAL/HIGH findings — it just won't publish to the Security tab.
+
+Prefer to wire it up manually instead of using the packaged action:
+
+```yaml
+- uses: actions/checkout@v4
+- run: npx solaudit ./programs --sarif > results.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: results.sarif
+```
+
+This repository's own [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs the full test suite, builds the CLI and web app, and uses this repo's own action against `examples/` on every push.
 
 ## Development
 
