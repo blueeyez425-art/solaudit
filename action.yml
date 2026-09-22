@@ -41,7 +41,11 @@ runs:
       if: ${{ inputs['upload-sarif'] == 'true' }}
       shell: bash
       run: |
-        npx --yes solaudit@0.1.2 "${{ inputs.path }}" --sarif > solaudit-results.sarif
+        # solaudit exits 1 when CRITICAL/HIGH findings exist, even with --sarif.
+        # That's correct for gating, but this step only generates the report file
+        # (the actual pass/fail gate is the separate step below), so don't let a
+        # non-zero exit here fail the job.
+        npx --yes solaudit@0.1.2 "${{ inputs.path }}" --sarif > solaudit-results.sarif || true
         echo "sarif-file=solaudit-results.sarif" >> "$GITHUB_OUTPUT"
 
     - name: Upload SARIF to GitHub code scanning
