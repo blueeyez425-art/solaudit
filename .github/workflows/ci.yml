@@ -27,8 +27,17 @@ jobs:
       - name: Build web app
         run: bun run build:web
 
-      - name: Sanity-scan the intentionally vulnerable example
-        run: node cli/dist/cli.js examples/vulnerable.rs --min-severity CRITICAL
+      - name: Sanity-scan the intentionally vulnerable example (expect non-zero exit)
+        run: |
+          set +e
+          node cli/dist/cli.js examples/vulnerable.rs --min-severity CRITICAL
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "Expected the scanner to exit non-zero on CRITICAL findings, but it exited 0."
+            exit 1
+          fi
+          echo "Sanity check passed: scanner correctly flagged CRITICAL findings (exit $code)."
 
   self-scan:
     runs-on: ubuntu-latest
