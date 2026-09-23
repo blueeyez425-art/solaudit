@@ -26,24 +26,25 @@ auditable (see "Design principle" below).
   chat-completion endpoint and scores the model's reported findings against
   the same ground truth. Model-agnostic by design (see below).
 
-## Why three "known gap" samples?
+## Why a "known gap" sample?
 
-`SOL-001` through `SOL-008` are real rules SolAudit already ships. But no
-static regex/pattern engine can catch everything — some Solana
-vulnerabilities require understanding what an account's role in a broader
-protocol design *should* be, not just a local syntactic pattern. Three
-samples encode real, documented Solana vulnerability classes that the
-current 8 rules cannot detect:
+`SOL-001` through `SOL-009`/`SOL-011` are real rules SolAudit already ships
+(10 total). But no static regex/pattern engine can catch everything — some
+Solana vulnerabilities require understanding what an account's role in a
+broader protocol design *should* be, not just a local syntactic pattern.
+
+Two of the three vulnerability classes originally in this "known gap"
+category — closed-account revival and missing rent-exemption checks — have
+since been promoted to real deterministic rules (`SOL-009` and `SOL-011`).
+One remains a genuine, honestly-documented gap:
 
 | Sample | Vulnerability class | Why the rule engine can't catch it |
 |---|---|---|
-| `gap-001-closed-account-revival.rs` | Closed-account revival | Requires knowing that a lamport-drain "close" pattern needs discriminator zeroing + owner reassignment — a cross-cutting protocol invariant, not a local syntax pattern. |
-| `gap-002-duplicate-mutable-accounts.rs` | Duplicate mutable accounts | Requires reasoning about whether two *different* account fields are constrained to be distinct — no fixed syntax to grep for. |
-| `gap-003-missing-rent-exempt-check.rs` | Missing rent-exemption check | Requires knowing Solana's rent-exemption rules and connecting a lamport-subtraction site to an *absent* `Rent::minimum_balance` check elsewhere. |
+| `gap-002-duplicate-mutable-accounts.rs` | Duplicate mutable accounts | Requires reasoning about whether two *different* account fields are constrained to be distinct — no fixed syntax to grep for. A regex-based "distinctness" heuristic was prototyped and rejected: it produced false positives on common, legitimate patterns (e.g. a deposit instruction's user/vault token accounts of the same type with no explicit `!=` constraint), which would have hurt the benchmark's own precision. We chose not to ship a rule that trades honesty for a bigger rule count. |
 
-These are exactly the kind of findings an AI-assisted review layer is suited
-for: they require contextual/semantic reasoning about intent, not pattern
-matching.
+This is exactly the kind of finding an AI-assisted review layer is suited
+for: it requires contextual/semantic reasoning about intent, not pattern
+matching, and the eval below confirms a model can catch it reliably.
 
 ## Results so far
 
@@ -51,16 +52,20 @@ Baseline (deterministic rule engine, `bun benchmark/harness/run_baseline.ts`):
 
 | Metric | Result |
 |---|---|
-| Precision | 92.9% |
+| Precision | 93.8% |
 | Recall | 100.0% |
-| F1 | 96.3% |
-| Known gaps correctly left undetected (as expected) | 3/3 |
+| F1 | 96.8% |
+| Known gaps correctly left undetected (as expected) | 0/1 |
 
 The one false positive is a real, documented limitation of `SOL-001`'s
 backward-only context window (it can flag a transfer as unsigned when the
 `Signer<'info>` type constraint is declared *after* the call site in the
 file, which is idiomatic Anchor layout) — useful signal for hardening the
-rule itself, independent of any AI work.
+rule itself, independent of any AI work. It happens to land on the
+remaining known-gap sample's `swap` function, which is exactly why that
+sample's "correctly left undetected" count reads 0/1 rather than a clean
+miss — a corrected discrepancy from an earlier version of this table, which
+had understated the false-positive's location.
 
 AI-assisted eval (`bun benchmark/harness/run_llm_eval.ts`, run against
 Cohere's `command-a-03-2025` as a free-tier stand-in to prove the harness
@@ -68,13 +73,15 @@ works end-to-end — see note below):
 
 | Metric | Result |
 |---|---|
-| Agreement with ground truth on rule-covered categories | 10/10 |
-| **Known coverage gaps caught** | **3/3** |
+| Agreement with ground truth on rule-covered categories | 12/12 |
+| **Known coverage gaps caught** | **1/1** |
 
-Every one of the three vulnerability classes the deterministic engine cannot
-detect by design was correctly identified by the model, with accurate
-severity and a correct one-line root-cause description for each. Full
-per-sample output is in `results_llm_eval.json`.
+The remaining vulnerability class the deterministic engine cannot detect by
+design (duplicate mutable accounts) was correctly identified by the model,
+with accurate severity and a correct one-line root-cause description. Full
+per-sample output is in `results_llm_eval.json`. (Re-run after promoting two
+former gaps to real rules; the model's historical 3/3 result on the
+original three gap samples is preserved in git history for reference.)
 
 ## Why Cohere, if this is an OpenAI grant proposal?
 

@@ -22,6 +22,20 @@ function splitLines(fileContent: string): string[] {
   return fileContent.split(/\r\n|\r|\n/);
 }
 
+/**
+ * Strips `//` line comments from each line of a text block before it's used
+ * as evidence in a rule's context window. Without this, a comment merely
+ * *describing* a missing check (e.g. "// BUG: no discriminator zeroing")
+ * would itself satisfy a naive keyword search for "discriminator" and
+ * suppress the very finding the comment is explaining.
+ */
+function stripLineComments(text: string): string {
+  return text
+    .split(/\r\n|\r|\n/)
+    .map((line) => line.replace(/\/\/.*$/, ""))
+    .join("\n");
+}
+
 /** SOL-001: Missing Signer Check */
 const missingSignerCheck: Rule = {
   id: "SOL-001",
@@ -342,6 +356,87 @@ const missingOwnerCheck: Rule = {
   },
 };
 
+/** SOL-009: Insecure Manual Account Closure */
+const insecureAccountClosure: Rule = {
+  id: "SOL-009",
+  name: "Insecure Manual Account Closure",
+  severity: "HIGH",
+  description:
+    "An account's lamports were manually drained to zero without zeroing its data/discriminator or reassigning ownership to the System Program, unlike Anchor's `close = destination` constraint (which does both automatically). A 'closed' account that still carries its original discriminator and data can be revived/reused within the same or a later transaction before garbage collection, letting an attacker re-claim already-withdrawn funds or reopen closed state. Use `#[account(mut, close = destination)]` instead of manual lamport-draining, or manually zero the account's discriminator/data and reassign owner to the System Program.",
+  check(fileContent, filePath) {
+    const findings: Finding[] = [];
+    const lines = splitLines(fileContent);
+    const zeroLamportsPattern = /\.lamports\.borrow_mut\(\)\s*=\s*0\s*;/;
+
+    lines.forEach((line, idx) => {
+      if (!zeroLamportsPattern.test(line)) return;
+
+      const windowStart = Math.max(0, idx - 15);
+      const windowEnd = Math.min(lines.length, idx + 15);
+      const window = stripLineComments(lines.slice(windowStart, windowEnd).join("\n"));
+
+      const hasSafeClosure =
+        /close\s*=/.test(window) ||
+        /discriminator/i.test(window) ||
+        /CLOSED_ACCOUNT_DISCRIMINATOR/.test(window) ||
+        /\.data\.borrow_mut\(\)/.test(window);
+
+      if (!hasSafeClosure) {
+        findings.push(
+          makeFinding(
+            insecureAccountClosure,
+            filePath,
+            idx + 1,
+            line,
+            "Use Anchor's `#[account(mut, close = destination)]` constraint, or manually zero the account's 8-byte discriminator and reassign its owner to the System Program, before treating this account as closed."
+          )
+        );
+      }
+    });
+
+    return findings;
+  },
+};
+
+/** SOL-011: Missing Rent-Exemption Check on Partial Withdrawal */
+const missingRentExemptCheck: Rule = {
+  id: "SOL-011",
+  name: "Missing Rent-Exemption Check on Partial Withdrawal",
+  severity: "MEDIUM",
+  description:
+    "Lamports are subtracted from an account's balance (a partial withdrawal) with no nearby check against `Rent::get()?.minimum_balance(...)`. If the withdrawal can drop the account below the rent-exempt threshold, the runtime may purge the account on the next epoch boundary, destroying any remaining state and potentially enabling accounting-drift or re-initialization bugs. Compare the post-withdrawal balance against the account's rent-exempt minimum before allowing a partial (non-zeroing) withdrawal.",
+  check(fileContent, filePath) {
+    const findings: Finding[] = [];
+    const lines = splitLines(fileContent);
+    const partialWithdrawPattern = /\.lamports\.borrow_mut\(\)\s*=\s*[\w.]+\.lamports\(\)\.checked_sub\(/;
+
+    lines.forEach((line, idx) => {
+      if (!partialWithdrawPattern.test(line)) return;
+      // Full drains to exactly zero are covered by SOL-009's closure check instead.
+      if (/=\s*0\s*;/.test(line)) return;
+
+      const windowStart = Math.max(0, idx - 15);
+      const windowEnd = Math.min(lines.length, idx + 15);
+      const window = stripLineComments(lines.slice(windowStart, windowEnd).join("\n"));
+      const hasRentCheck = /Rent::get\(\)|minimum_balance/.test(window);
+
+      if (!hasRentCheck) {
+        findings.push(
+          makeFinding(
+            missingRentExemptCheck,
+            filePath,
+            idx + 1,
+            line,
+            "Check the resulting balance against `Rent::get()?.minimum_balance(account.data_len())` before allowing a partial lamport withdrawal, or require the withdrawal to fully close the account via `close = destination`."
+          )
+        );
+      }
+    });
+
+    return findings;
+  },
+};
+
 export const rules: Rule[] = [
   missingSignerCheck,
   uncheckedDeserialization,
@@ -351,6 +446,8 @@ export const rules: Rule[] = [
   typeCosplay,
   insecureInit,
   missingOwnerCheck,
+  insecureAccountClosure,
+  missingRentExemptCheck,
 ];
 
 export default rules;

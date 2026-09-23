@@ -80,10 +80,77 @@ describe("SOL-007 Insecure Account Initialization", () => {
   });
 });
 
+describe("SOL-009 Insecure Manual Account Closure", () => {
+  test("flags manual lamport-zeroing with no discriminator zeroing or close constraint nearby", () => {
+    const src = `
+      pub fn close_position(ctx: Context<ClosePosition>) -> Result<()> {
+        let position = ctx.accounts.position.to_account_info();
+        let destination = ctx.accounts.destination.to_account_info();
+        **destination.lamports.borrow_mut() = destination.lamports().checked_add(position.lamports()).unwrap();
+        **position.lamports.borrow_mut() = 0;
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-009").check(src, "test.rs");
+    expect(findings.length).toBe(1);
+  });
+
+  test("does not flag when discriminator zeroing is nearby", () => {
+    const src = `
+      pub fn close_position(ctx: Context<ClosePosition>) -> Result<()> {
+        **position.lamports.borrow_mut() = 0;
+        let mut data = position.try_borrow_mut_data()?;
+        data[..8].copy_from_slice(&CLOSED_ACCOUNT_DISCRIMINATOR);
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-009").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+
+  test("does not flag Anchor's close = constraint usage", () => {
+    const src = `#[account(mut, close = destination)]\npub position: Account<'info, Position>,`;
+    const findings = ruleById("SOL-009").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+});
+
+describe("SOL-011 Missing Rent-Exemption Check", () => {
+  test("flags partial lamport withdrawal with no rent check nearby", () => {
+    const src = `
+      pub fn partial_withdraw(ctx: Context<PartialWithdraw>, lamports: u64) -> Result<()> {
+        **vault.lamports.borrow_mut() = vault.lamports().checked_sub(lamports).unwrap();
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-011").check(src, "test.rs");
+    expect(findings.length).toBe(1);
+  });
+
+  test("does not flag when a Rent::minimum_balance check is nearby", () => {
+    const src = `
+      pub fn partial_withdraw(ctx: Context<PartialWithdraw>, lamports: u64) -> Result<()> {
+        let min_balance = Rent::get()?.minimum_balance(vault.data_len());
+        require!(vault.lamports() - lamports >= min_balance, ErrorCode::BelowRentExempt);
+        **vault.lamports.borrow_mut() = vault.lamports().checked_sub(lamports).unwrap();
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-011").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+
+  test("does not flag a full drain to zero (handled by SOL-009 instead)", () => {
+    const src = `**vault.lamports.borrow_mut() = 0;`;
+    const findings = ruleById("SOL-011").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+});
+
 describe("rules registry", () => {
-  test("exposes exactly 8 rules with unique ids", () => {
-    expect(rules.length).toBe(8);
+  test("exposes exactly 10 rules with unique ids", () => {
+    expect(rules.length).toBe(10);
     const ids = new Set(rules.map((r) => r.id));
-    expect(ids.size).toBe(8);
+    expect(ids.size).toBe(10);
   });
 });

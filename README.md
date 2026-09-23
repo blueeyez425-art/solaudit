@@ -102,6 +102,8 @@ bun run dev
 | `SOL-006` | HIGH | Type Cosplay / Missing Discriminator Check | Manual `try_from_slice` deserialization with no discriminator validation or `Account<'info, T>` wrapper |
 | `SOL-007` | MEDIUM | Insecure Account Initialization | `#[account(init, ...)]` constraints missing `payer` and/or `space` |
 | `SOL-008` | LOW | Missing Owner Check | Raw `AccountInfo` fields used without a nearby `.owner` comparison |
+| `SOL-009` | HIGH | Insecure Manual Account Closure | An account's lamports manually drained to zero without discriminator zeroing or owner reassignment (unlike Anchor's `close = destination`), enabling closed-account revival |
+| `SOL-011` | MEDIUM | Missing Rent-Exemption Check | A partial lamport withdrawal with no nearby `Rent::get()?.minimum_balance(...)` check, risking runtime garbage-collection of the account |
 
 Each rule is implemented as real regex/line-scanning logic in [`packages/core/src/rules/index.ts`](./packages/core/src/rules/index.ts) — see that file (and its accompanying [tests](./packages/core/src/rules/index.test.ts)) for the exact matching heuristics and false-positive guards.
 

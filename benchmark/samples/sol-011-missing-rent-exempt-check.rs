@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 declare_id!("11111111111111111111111111111111");
 
-// NOT COVERED BY ANY CURRENT SOL-0xx RULE.
+// NOW COVERED BY SOL-011 (Missing Rent-Exemption Check on Partial Withdrawal).
 //
 // `partial_withdraw` lets the owner pull an arbitrary amount of lamports out
 // of `vault` with no check that the account's remaining balance stays above

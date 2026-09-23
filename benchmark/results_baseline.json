@@ -1,16 +1,16 @@
 {
-  "generatedAt": "2026-09-19T02:24:58.127Z",
+  "generatedAt": "2026-09-23T00:20:47.684Z",
   "aggregate": {
-    "truePositives": 13,
+    "truePositives": 15,
     "falsePositives": 1,
     "falseNegatives": 0,
-    "precision": 0.9285714285714286,
+    "precision": 0.9375,
     "recall": 1,
-    "f1": 0.962962962962963
+    "f1": 0.967741935483871
   },
   "knownGaps": {
-    "total": 3,
-    "correctlyEmpty": 2
+    "total": 1,
+    "correctlyEmpty": 0
   },
   "samples": [
     {
@@ -167,13 +167,19 @@
       "vulnClass": "missing-owner-check"
     },
     {
-      "file": "gap-001-closed-account-revival.rs",
-      "expectedRuleIds": [],
-      "foundRuleIds": [],
-      "truePositives": [],
+      "file": "sol-009-closed-account-revival.rs",
+      "expectedRuleIds": [
+        "SOL-009"
+      ],
+      "foundRuleIds": [
+        "SOL-009"
+      ],
+      "truePositives": [
+        "SOL-009"
+      ],
       "falsePositives": [],
       "falseNegatives": [],
-      "isKnownGap": true,
+      "isKnownGap": false,
       "vulnClass": "closed-account-revival"
     },
     {
@@ -191,13 +197,19 @@
       "vulnClass": "duplicate-mutable-accounts"
     },
     {
-      "file": "gap-003-missing-rent-exempt-check.rs",
-      "expectedRuleIds": [],
-      "foundRuleIds": [],
-      "truePositives": [],
+      "file": "sol-011-missing-rent-exempt-check.rs",
+      "expectedRuleIds": [
+        "SOL-011"
+      ],
+      "foundRuleIds": [
+        "SOL-011"
+      ],
+      "truePositives": [
+        "SOL-011"
+      ],
       "falsePositives": [],
       "falseNegatives": [],
-      "isKnownGap": true,
+      "isKnownGap": false,
       "vulnClass": "missing-rent-exemption-check"
     },
     {

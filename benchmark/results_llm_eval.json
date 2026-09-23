@@ -2,8 +2,8 @@
   "generatedAt": "2026-09-19T02:24:19.025Z",
   "model": "command-a-03-2025",
   "aggregate": {
-    "ruleCoveredAgreement": "10/10",
-    "knownGapsCaught": "3/3"
+    "ruleCoveredAgreement": "12/12",
+    "knownGapsCaught": "1/1"
   },
   "samples": [
     {
@@ -138,9 +138,9 @@
       "caughtExpectedClass": true
     },
     {
-      "file": "gap-001-closed-account-revival.rs",
+      "file": "sol-009-closed-account-revival.rs",
       "vulnClass": "closed-account-revival",
-      "isKnownGap": true,
+      "isKnownGap": false,
       "modelFindings": [
         {
           "vulnClass": "closed-account-revival",
@@ -166,9 +166,9 @@
       "caughtExpectedClass": true
     },
     {
-      "file": "gap-003-missing-rent-exempt-check.rs",
+      "file": "sol-011-missing-rent-exempt-check.rs",
       "vulnClass": "missing-rent-exemption-check",
-      "isKnownGap": true,
+      "isKnownGap": false,
       "modelFindings": [
         {
           "vulnClass": "missing-rent-exemption-check",

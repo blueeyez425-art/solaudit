@@ -87,25 +87,29 @@
       "notes": "Raw AccountInfo used to read oracle price data with no .owner validation anywhere in the instruction."
     },
     {
-      "file": "gap-001-closed-account-revival.rs",
-      "expectedRuleIds": [],
-      "isKnownGap": true,
+      "file": "sol-009-closed-account-revival.rs",
+      "expectedRuleIds": [
+        "SOL-009"
+      ],
+      "isKnownGap": false,
       "vulnClass": "closed-account-revival",
-      "notes": "Manual lamport-drain 'close' pattern that never zeroes the discriminator or reassigns owner to System Program, unlike Anchor's close = constraint. Not detected by any current SOL-0xx rule."
+      "notes": "Manual lamport-drain 'close' pattern that never zeroes the discriminator or reassigns owner to System Program, unlike Anchor's close = constraint. Formerly an undetected gap; now covered by rule SOL-009."
     },
     {
       "file": "gap-002-duplicate-mutable-accounts.rs",
       "expectedRuleIds": [],
       "isKnownGap": true,
       "vulnClass": "duplicate-mutable-accounts",
-      "notes": "Two mutable token accounts in one instruction with no constraint forcing them to be distinct, allowing the same account to be passed for both. Not detected by any current SOL-0xx rule."
+      "notes": "Two mutable token accounts in one instruction with no constraint forcing them to be distinct, allowing the same account to be passed for both. Deliberately NOT covered by a deterministic rule: a regex-based distinctness check produced false positives on common, legitimate patterns (e.g. a deposit instruction's user/vault token accounts of the same type with no explicit != constraint), which would have hurt the benchmark's own precision number. Remains a genuine, honestly-documented gap suited to AI-assisted review instead of a fragile heuristic."
     },
     {
-      "file": "gap-003-missing-rent-exempt-check.rs",
-      "expectedRuleIds": [],
-      "isKnownGap": true,
+      "file": "sol-011-missing-rent-exempt-check.rs",
+      "expectedRuleIds": [
+        "SOL-011"
+      ],
+      "isKnownGap": false,
       "vulnClass": "missing-rent-exemption-check",
-      "notes": "Partial lamport withdrawal with no check against Rent::minimum_balance, risking account garbage-collection below rent-exempt threshold. Not detected by any current SOL-0xx rule."
+      "notes": "Partial lamport withdrawal with no check against Rent::minimum_balance, risking account garbage-collection below rent-exempt threshold. Formerly an undetected gap; now covered by rule SOL-011."
     },
     {
       "file": "clean-001-well-audited.rs",

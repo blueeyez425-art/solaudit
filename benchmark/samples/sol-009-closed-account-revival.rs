@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 declare_id!("11111111111111111111111111111111");
 
-// NOT COVERED BY ANY CURRENT SOL-0xx RULE.
+// NOW COVERED BY SOL-009 (Insecure Manual Account Closure).
 //
 // `close_position` drains the account's lamports to `destination` to "close"
 // it, but it never zeroes the account's discriminator/data or reassigns its
