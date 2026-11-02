@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SolScape — a persistent on-chain territory map (devnet)</title>
+<style>
+  :root { --bg:#0b0e14; --panel:#131824; --line:#232c3f; --fg:#dbe4f0; --dim:#7d8aa3; --accent:#5ee0a0; --warn:#ffb454; --bad:#ff6b6b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 system-ui, sans-serif; }
+  header { display:flex; align-items:center; gap:12px; padding:12px 18px; border-bottom:1px solid var(--line); }
+  h1 { font-size:18px; margin:0; letter-spacing:.5px; }
+  h1 span { color:var(--accent); }
+  .pill { font-size:11px; padding:2px 8px; border:1px solid var(--warn); color:var(--warn); border-radius:99px; }
+  main { display:grid; grid-template-columns: 1fr 320px; gap:16px; padding:16px 18px; max-width:1200px; margin:0 auto; }
+  @media (max-width:900px){ main{ grid-template-columns:1fr; } }
+  #gridWrap { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  canvas { width:100%; image-rendering:pixelated; border-radius:6px; cursor:crosshair; display:block; background:#0e1320; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:14px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:1px; color:var(--dim); margin:0 0 10px; }
+  button { background:var(--accent); color:#06251a; border:0; border-radius:8px; padding:9px 14px; font-weight:600; cursor:pointer; width:100%; margin-top:8px; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--fg); }
+  input { width:100%; background:#0e1320; border:1px solid var(--line); color:var(--fg); border-radius:8px; padding:8px 10px; margin-top:6px; }
+  .kv { display:flex; justify-content:space-between; padding:3px 0; font-size:13px; }
+  .kv b { font-weight:600; }
+  .muted { color:var(--dim); font-size:12px; }
+  #status { font-size:12px; min-height:18px; color:var(--accent); }
+  #status.err { color:var(--bad); }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; font-size:12px; color:var(--dim); }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sol<span>Scape</span></h1>
+  <span class="pill">devnet</span>
+  <span class="muted">persistent on-chain territory map — every tile is a real account on Solana</span>
+  <div style="margin-left:auto"><button class="ghost" id="connectBtn" style="width:auto;margin:0">Connect wallet</button></div>
+</header>
+<main>
+  <div id="gridWrap">
+    <canvas id="grid" width="600" height="600"></canvas>
+    <div class="legend">
+      <span><span class="sw" style="background:#1a2334"></span>unclaimed</span>
+      <span><span class="sw" style="background:#2e4a6b"></span>owned</span>
+      <span><span class="sw" style="background:#5ee0a0"></span>yours</span>
+      <span><span class="sw" style="background:#ffb454"></span>for sale</span>
+    </div>
+    <div id="status" style="margin-top:8px"></div>
+  </div>
+  <div>
+    <div class="card" id="profileCard">
+      <h2>You</h2>
+      <div id="profileBody" class="muted">Connect a Solana wallet (Phantom) on devnet to play. Need devnet SOL? <a href="https://faucet.solana.com" target="_blank" rel="noopener">faucet.solana.com</a></div>
+    </div>
+    <div class="card">
+      <h2>Selected tile</h2>
+      <div id="tileBody" class="muted">Click any cell on the map.</div>
+    </div>
+    <div class="card">
+      <h2>World</h2>
+      <div class="kv"><span>Tiles claimed</span><b id="statTiles">—</b></div>
+      <div class="kv"><span>Listed for sale</span><b id="statListed">—</b></div>
+      <div class="kv"><span>Treasury</span><b id="statTreasury">—</b></div>
+      <div class="kv"><span>Program</span><b><a id="progLink" target="_blank" rel="noopener">explorer ↗</a></b></div>
+      <div class="muted" style="margin-top:8px">Claim: 0.01 SOL · Upgrade: 0.005×2^level SOL · Sales: 5% royalty to treasury · Built by <a href="https://github.com/blueeyez425-art/solaudit" target="_blank" rel="noopener">SolAudit</a>'s author — scanned clean by SolAudit 0.3.3.</div>
+    </div>
+  </div>
+</main>
+<script src="https://unpkg.com/@solana/web3.js@1.98.0/lib/index.iife.min.js"></script>
+<script>
+(async () => {
+  const W = solanaWeb3;
+  const PROGRAM_ID = new W.PublicKey('2vmERjyyvMD2Wdp9kuELkbUNVhL73tfGx1KKJdWXiUon');
+  const GRID = 100;
+  const conn = new W.Connection(W.clusterApiUrl('devnet'), 'confirmed');
+  document.getElementById('progLink').href =
+    'https://explorer.solana.com/address/' + PROGRAM_ID.toBase58() + '?cluster=devnet';
+
+  const $ = id => document.getElementById(id);
+  const status = (msg, err) => { const s = $('status'); s.textContent = msg; s.className = err ? 'err' : ''; };
+
+  // ---- Anchor discriminators (sha256("global:<ix>")[..8]) ----
+  async function disc(ns, name) {
+    const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ns + ':' + name));
+    return new Uint8Array(h).slice(0, 8);
+  }
+  const IX = {};
+  for (const n of ['register_player','claim_tile','upgrade_tile','list_tile','buy_tile','harvest'])
+    IX[n] = await disc('global', n);
+
+  // ---- PDAs ----
+  const pda = (...seeds) => W.PublicKey.findProgramAddressSync(seeds, PROGRAM_ID)[0];
+  const configPda   = pda(new TextEncoder().encode('config'));
+  const treasuryPda = pda(new TextEncoder().encode('treasury'));
+  const tilePda = (x, y) => pda(new TextEncoder().encode('tile'), Uint8Array.of(x), Uint8Array.of(y));
+  const profilePda = pk => pda(new TextEncoder().encode('player'), pk.toBuffer());
+
+  // ---- state ----
+  let wallet = null;                 // Phantom provider
+  let me = null;                     // my pubkey
+  let tiles = new Map();             // "x,y" -> {owner,x,y,level,listPrice}
+  let profile = null;
+  let selected = null;               // {x,y}
+
+  // ---- decoding (Borsh layouts from programs/solscape/src/lib.rs) ----
+  const LAM = 1e9;
+  function decodeTile(buf) {
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    return {
+      owner: new W.PublicKey(buf.slice(8, 40)).toBase58(),
+      x: buf[40], y: buf[41], level: buf[42],
+      listPrice: Number(dv.getBigUint64(43, true)) / LAM,
+    };
+  }
+  function decodeProfile(buf) {
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    return { xp: Number(dv.getBigUint64(40, true)), tilesClaimed: dv.getUint32(48, true) };
+  }
+
+  // ---- grid ----
+  const cv = $('grid'), ctx = cv.getContext('2d');
+  const CELL = 6; // 600px canvas / 100 cells
+  function draw() {
+    ctx.fillStyle = '#0e1320'; ctx.fillRect(0, 0, 600, 600);
+    for (const t of tiles.values()) {
+      let c = '#2e4a6b';
+      if (t.listPrice > 0) c = '#ffb454';
+      if (me && t.owner === me.toBase58()) c = t.listPrice > 0 ? '#ffd08a' : '#5ee0a0';
+      ctx.fillStyle = c;
+      ctx.fillRect(t.x * CELL, t.y * CELL, CELL - 1, CELL - 1);
+    }
+    if (selected) {
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(selected.x * CELL + .5, selected.y * CELL + .5, CELL - 1, CELL - 1);
+    }
+  }
+  cv.addEventListener('click', e => {
+    const r = cv.getBoundingClientRect();
+    const x = Math.min(GRID - 1, Math.floor((e.clientX - r.left) / r.width * GRID));
+    const y = Math.min(GRID - 1, Math.floor((e.clientY - r.top) / r.height * GRID));
+    selected = { x, y };
+    draw(); renderTile();
+  });
+
+  // ---- refresh on-chain state ----
+  async function refresh() {
+    const accts = await conn.getProgramAccounts(PROGRAM_ID, { filters: [{ dataSize: 51 }] });
+    tiles = new Map(accts.map(a => { const t = decodeTile(a.account.data); return [t.x + ',' + t.y, t]; }));
+    $('statTiles').textContent = tiles.size;
+    $('statListed').textContent = [...tiles.values()].filter(t => t.listPrice > 0).length;
+    $('statTreasury').textContent = (await conn.getBalance(treasuryPda) / LAM).toFixed(3) + ' SOL';
+    if (me) {
+      const pa = await conn.getAccountInfo(profilePda(me));
+      profile = pa ? decodeProfile(pa.data) : null;
+      renderProfile();
+    }
+    draw(); renderTile();
+  }
+
+  function renderProfile() {
+    const b = $('profileBody');
+    if (!me) return;
+    if (!profile) {
+      b.innerHTML = '<div class="muted">No SolScape profile yet.</div>';
+      const btn = document.createElement('button');
+      btn.textContent = 'Register player (one-time)';
+      btn.onclick = () => send('register_player', []);
+      b.appendChild(btn);
+      return;
+    }
+    const mine = [...tiles.values()].filter(t => t.owner === me.toBase58());
+    b.innerHTML =
+      kv('Wallet', me.toBase58().slice(0, 6) + '…' + me.toBase58().slice(-4)) +
+      kv('XP', profile.xp) + kv('Lifetime claims', profile.tilesClaimed) +
+      kv('Tiles owned now', mine.length) +
+      kv('Harvestable', mine.reduce((s, t) => s + t.level * 1000, 0) + ' XP');
+  }
+  const kv = (k, v) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`;
+
+  function renderTile() {
+    const b = $('tileBody');
+    if (!selected) { b.innerHTML = '<span class="muted">Click any cell on the map.</span>'; return; }
+    const { x, y } = selected;
+    const t = tiles.get(x + ',' + y);
+    let html = kv('Coordinates', `(${x}, ${y})`);
+    b.innerHTML = '';
+    if (!t) {
+      b.innerHTML = html + '<div class="muted">Unclaimed land. Claim it for 0.01 SOL.</div>';
+      if (me && profile) addBtn(b, 'Claim tile — 0.01 SOL', () =>
+        send('claim_tile', u8s(x, y), [
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: tilePda(x, y), isSigner: false, isWritable: true },
+          { pubkey: profilePda(me), isSigner: false, isWritable: true },
+          { pubkey: treasuryPda, isSigner: false, isWritable: true },
+          { pubkey: me, isSigner: true, isWritable: true },
+          { pubkey: me, isSigner: false, isWritable: false },
+          { pubkey: W.SystemProgram.programId, isSigner: false, isWritable: false },
+        ]));
+      return;
+    }
+    const mine = me && t.owner === me.toBase58();
+    html += kv('Owner', mine ? 'you' : t.owner.slice(0, 6) + '…' + t.owner.slice(-4));
+    html += kv('Level', t.level + ' / 10');
+    if (t.listPrice > 0) html += kv('Listed for', t.listPrice + ' SOL');
+    b.innerHTML = html;
+    if (!me) return;
+    if (mine) {
+      // on-chain fee = base × 2^level × lifetime tiles_claimed
+      const fee = (0.005 * Math.pow(2, t.level) * (profile ? profile.tilesClaimed : 1));
+      const feeStr = fee >= 1 ? fee.toFixed(2) : fee.toFixed(3);
+      if (t.level < 10) addBtn(b, `Upgrade — ${feeStr} SOL`, () =>
+        send('upgrade_tile', new Uint8Array(0), [
+          { pubkey: tilePda(x, y), isSigner: false, isWritable: true },
+          { pubkey: profilePda(me), isSigner: false, isWritable: true },
+          { pubkey: treasuryPda, isSigner: false, isWritable: true },
+          { pubkey: me, isSigner: true, isWritable: true },
+          { pubkey: me, isSigner: false, isWritable: false },
+          { pubkey: W.SystemProgram.programId, isSigner: false, isWritable: false },
+        ]));
+      if (t.level > 0) addBtn(b, `Harvest ${t.level * 1000} XP`, () =>
+        send('harvest', new Uint8Array(0), [
+          { pubkey: tilePda(x, y), isSigner: false, isWritable: false },
+          { pubkey: profilePda(me), isSigner: false, isWritable: true },
+          { pubkey: me, isSigner: true, isWritable: false },
+        ]));
+      const inp = document.createElement('input');
+      inp.placeholder = 'Price in SOL (e.g. 0.05)';
+      b.appendChild(inp);
+      addBtn(b, t.listPrice > 0 ? 'Update listing' : 'List for sale', () => {
+        const sol = parseFloat(inp.value);
+        if (!(sol > 0)) return status('Enter a valid price', true);
+        const lam = new Uint8Array(8);
+        new DataView(lam.buffer).setBigUint64(0, BigInt(Math.round(sol * LAM)), true);
+        return send('list_tile', lam, [
+          { pubkey: tilePda(x, y), isSigner: false, isWritable: true },
+          { pubkey: me, isSigner: true, isWritable: false },
+        ]);
+      });
+    } else if (t.listPrice > 0) {
+      addBtn(b, `Buy for ${t.listPrice} SOL`, () =>
+        send('buy_tile', new Uint8Array(0), [
+          { pubkey: configPda, isSigner: false, isWritable: false },
+          { pubkey: tilePda(x, y), isSigner: false, isWritable: true },
+          { pubkey: new W.PublicKey(t.owner), isSigner: false, isWritable: true },
+          { pubkey: treasuryPda, isSigner: false, isWritable: true },
+          { pubkey: me, isSigner: true, isWritable: true },
+          { pubkey: W.SystemProgram.programId, isSigner: false, isWritable: false },
+        ]));
+    }
+  }
+  function addBtn(parent, label, fn) {
+    const btn = document.createElement('button');
+    btn.textContent = label; btn.onclick = fn; parent.appendChild(btn);
+  }
+  function u8s(...vals) { return Uint8Array.of(...vals); }
+
+  // ---- send a transaction ----
+  async function send(ixName, args, keys) {
+    if (!wallet) return status('Connect a wallet first', true);
+    // register_player has a fixed account list
+    if (ixName === 'register_player') keys = [
+      { pubkey: profilePda(me), isSigner: false, isWritable: true },
+      { pubkey: me, isSigner: true, isWritable: true },
+      { pubkey: W.SystemProgram.programId, isSigner: false, isWritable: false },
+    ];
+    try {
+      status('Waiting for wallet approval…');
+      const data = new Uint8Array(8 + args.length);
+      data.set(IX[ixName], 0); data.set(args, 8);
+      const tx = new W.Transaction().add(new W.TransactionInstruction({ programId: PROGRAM_ID, keys, data }));
+      tx.feePayer = me;
+      tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+      const signed = await wallet.signTransaction(tx);
+      const sig = await conn.sendRawTransaction(signed.serialize());
+      status('Confirming… ' + sig.slice(0, 12) + '…');
+      await conn.confirmTransaction(sig, 'confirmed');
+      status('Confirmed: ' + sig.slice(0, 16) + '…');
+      await refresh();
+    } catch (e) {
+      status(e.message || String(e), true);
+    }
+  }
+
+  // ---- wallet ----
+  $('connectBtn').onclick = async () => {
+    const provider = window.solana;
+    if (!provider || !provider.isPhantom) return status('Phantom wallet not found — install phantom.app', true);
+    const res = await provider.connect();
+    wallet = provider;
+    me = res.publicKey;
+    $('connectBtn').textContent = me.toBase58().slice(0, 4) + '…' + me.toBase58().slice(-4);
+    status('Connected. Make sure Phantom is set to Devnet (Settings → Developer Settings → Change network).');
+    await refresh();
+  };
+
+  status('Loading world…');
+  await refresh();
+  status('World loaded. Connect a wallet to play.');
+})().catch(e => { document.getElementById('status').textContent = e.message; });
+</script>
+</body>
+</html>
