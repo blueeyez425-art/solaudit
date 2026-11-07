@@ -1,0 +1,53 @@
+use anchor_lang::prelude::*;
+use anchor_lang::system_program;
+
+declare_id!("11111111111111111111111111111111");
+
+const SWITCHBOARD_PROGRAM: Pubkey = pubkey!("11111111111111111111111111111111");
+
+#[program]
+pub mod coinflip_vrf {
+    use super::*;
+
+    // SAFE CONTROL: the outcome comes from a verifiable randomness oracle
+    // (Switchboard VRF), not from clock/slot data. The clock is never read.
+    pub fn play(ctx: Context<Play>, guess: u8) -> Result<()> {
+        require!(guess <= 1, ErrorCode::InvalidGuess);
+        let randomness = ctx.accounts.randomness_account.get_value()?;
+        let roll = (randomness[0] as u64) % 2;
+        if roll == guess as u64 {
+            let payout = ctx.accounts.vault.lamports() / 10;
+            let seeds: &[&[u8]] = &[b"vault", &[ctx.bumps.vault]];
+            system_program::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.system_program.to_account_info(),
+                    system_program::Transfer {
+                        from: ctx.accounts.vault.to_account_info(),
+                        to: ctx.accounts.player.to_account_info(),
+                    },
+                    &[seeds],
+                ),
+                payout,
+            )?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Play<'info> {
+    #[account(mut, seeds = [b"vault"], bump)]
+    pub vault: SystemAccount<'info>,
+    #[account(mut)]
+    pub player: Signer<'info>,
+    /// CHECK: Switchboard VRF randomness account; owner pinned below
+    #[account(owner = SWITCHBOARD_PROGRAM)]
+    pub randomness_account: AccountInfo<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[error_code]
+pub enum ErrorCode {
+    #[msg("guess must be 0 or 1")]
+    InvalidGuess,
+}

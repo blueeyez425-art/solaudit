@@ -44,7 +44,7 @@ solaudit [path] [options]
 | `--json` | Print raw scan results as JSON |
 | `--sarif` | Print results as SARIF 2.1.0 (for GitHub Code Scanning) |
 | `--min-severity <level>` | Only report findings at or above `CRITICAL`\|`HIGH`\|`MEDIUM`\|`LOW`\|`INFO` |
-| `--experimental` | Also run opt-in experimental rules (`SOL-012` Duplicate Mutable Accounts, `SOL-013` Token Account Not Bound to Mint); higher signal, more false positives |
+| `--experimental` | Also run opt-in experimental rules (`SOL-012` Duplicate Mutable Accounts, `SOL-013` Token Account Not Bound to Mint, `SOL-015` Mint/Freeze Authority Never Revoked); higher signal, more false positives |
 | `--include-tests` | Also scan test/fuzz/fixture/example code (skipped by default; findings there are rarely actionable) |
 | `--help` | Show usage |
 
@@ -107,6 +107,7 @@ bun run dev
 | `SOL-009` | HIGH | Insecure Manual Account Closure | An account's lamports manually drained to zero (`lamports.borrow_mut() = 0` or `try_borrow_mut_lamports() = 0`) without discriminator zeroing or owner reassignment (unlike Anchor's `close = destination`), enabling closed-account revival |
 | `SOL-010` | MEDIUM | Reinitialization Risk via init_if_needed | `#[account(init_if_needed, ...)]` without canonical PDA seeds / `has_one` constraints, letting a pre-existing attacker-crafted account pass as freshly initialized |
 | `SOL-011` | MEDIUM | Missing Rent-Exemption Check | A partial lamport withdrawal with no nearby `Rent::get()?.minimum_balance(...)` check, risking runtime garbage-collection of the account |
+| `SOL-014` | MEDIUM | Insecure On-Chain Randomness | A handler derives an outcome from public on-chain entropy (clock slot/timestamp, recent blockhash, slot-hashes) reduced via modulo/bitmask, in the same handler that moves value — predictable "randomness" attackers can grind or pre-compute. Requires entropy + reduction within a few lines + actual value movement, and suppresses regions using a real randomness oracle (Switchboard VRF, Orao) |
 
 Each rule is implemented as real regex/line-scanning logic in [`packages/core/src/rules/index.ts`](./packages/core/src/rules/index.ts) — see that file (and its accompanying [tests](./packages/core/src/rules/index.test.ts)) for the exact matching heuristics and false-positive guards.
 
@@ -137,7 +138,23 @@ Benchmark label integrity note: three samples' labels were revised in 0.3.1 to m
 
 Fixture revisions disclosed: SolScape's `withdraw_treasury` was rewritten to the genuinely exploitable `invoke_signed` shape (v1's plain `invoke` could not actually drain), `close_tile` now leaves data intact (v1 zeroed it, which is the *safe* pattern), and `buy_tile_spl` gained the realistic typed-token + mint shape SOL-013 is designed to scope to. v1 is archived in the fixture directory.
 
-**Duplicate mutable accounts** and **token accounts unbound to their mint** (the Cashio class) are covered by the experimental `SOL-012` and `SOL-013` rules, available via `solaudit --experimental`. A “distinctness” heuristic false-positives on common legitimate patterns (for example a deposit instruction’s user/vault token accounts of the same type with no explicit `!=` constraint), so it stays opt-in to protect the default ruleset's precision. These numbers describe this suite, not general security effectiveness.
+**Duplicate mutable accounts**, **token accounts unbound to their mint** (the Cashio class), and **unrevoked mint/freeze authorities** (the classic token rug vector) are covered by the experimental `SOL-012`, `SOL-013`, and `SOL-015` rules, available via `solaudit --experimental`. A “distinctness” heuristic false-positives on common legitimate patterns (for example a deposit instruction’s user/vault token accounts of the same type with no explicit `!=` constraint), so it stays opt-in to protect the default ruleset's precision. `SOL-015` stays opt-in because revocation may live in a different source file and protocol-controlled mints retain authority deliberately. These numbers describe this suite, not general security effectiveness.
+
+### 0.3.4
+
+- **New default rule `SOL-014` (Insecure On-Chain Randomness)** — catches handlers that derive outcomes from public on-chain entropy (clock slot/timestamp, recent blockhash, slot-hashes) reduced via modulo/bitmask while moving value. This is the class behind repeated exploits of on-chain games and lotteries. Precision-guarded by an entropy↔reduction proximity window and value-movement requirement, and suppressed when a real randomness oracle (Switchboard VRF, Orao) is in use. Verified: flags the seeded coin-flip sample, stays quiet on deadline-style clock use and on oracle-based games, and produced **zero false positives on marginfi's main program** (139 files, heavy `Clock` usage for interest accrual).
+- **New experimental rule `SOL-015` (Mint/Freeze Authority Never Revoked)** — flags mints initialized with no `set_authority` revocation anywhere in the file (the classic rug vector: indefinite inflation, holder freezing). Opt-in because revocation may live in another file and protocol-controlled mints retain authority deliberately.
+- Benchmark suite extended to 17 samples (vulnerable coin flip, VRF-safe control, unrevoked-mint known gap): **100% precision / 100% recall / 100% F1 maintained**; SolScape ground truth still 9/9 with `--experimental`, hardened build still clean.
+- Housekeeping: the CLI banner version no longer drifts (single source of truth), and a clean scan now prints an explicit reminder that 0 findings ≠ 0 bugs.
+
+## What SolAudit is (and isn't)
+
+SolAudit is a **first-pass scanner for known Solana vulnerability classes**, not an audit.
+
+- It catches the bug classes it has rules for — measurably, against published ground truth ([SolScape](./examples/solscape) and the [benchmark](./benchmark)).
+- A clean scan means none of those known classes were detected. It does **not** mean the program is safe: logic flaws, economic/oracle attacks, and unknown vulnerability classes are out of scope for any static scanner.
+- Non-Anchor programs and custom validation layers reduce visibility; findings there need manual triage.
+- If the program will hold real funds, get a manual review or professional audit regardless of scan results.
 
 ## Output formats (CLI)
 

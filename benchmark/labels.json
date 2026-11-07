@@ -123,6 +123,29 @@
       "isKnownGap": false,
       "vulnClass": "none",
       "notes": "Fully safe reference program. Expected zero findings from both the rule engine and a correct AI reviewer."
+    },
+    {
+      "file": "sol-014-insecure-randomness.rs",
+      "expectedRuleIds": [
+        "SOL-014"
+      ],
+      "isKnownGap": false,
+      "vulnClass": "insecure-onchain-randomness",
+      "notes": "Coin-flip outcome derived from clock.slot % 2 gating a PDA-signed payout from the vault. On-chain slot/timestamp entropy is public and partly validator-influenced; attackers simulate outcomes off-chain and only submit winning plays. The payout itself is canonical (PDA signer seeds, Signer player) so no other rule should fire."
+    },
+    {
+      "file": "sol-014-safe-vrf.rs",
+      "expectedRuleIds": [],
+      "isKnownGap": false,
+      "vulnClass": "none",
+      "notes": "Safe control for SOL-014: identical payout flow, but the outcome comes from a verifiable randomness oracle (Switchboard VRF-style randomness account with a pinned owner) and the clock is never read. Expected zero findings."
+    },
+    {
+      "file": "gap-003-unrevoked-mint-authority.rs",
+      "expectedRuleIds": [],
+      "isKnownGap": true,
+      "vulnClass": "unrevoked-mint-authority",
+      "notes": "A mint is initialized with mint and freeze authorities that are never revoked (no set_authority anywhere) \u2014 the classic token rug vector (indefinite inflation / holder freezing). As of 0.3.4 the experimental SOL-015 rule covers this class behind --experimental; it remains excluded from the default ruleset because revocation may live in a different source file of the same project and protocol-controlled mints retain authority deliberately."
     }
   ]
 }

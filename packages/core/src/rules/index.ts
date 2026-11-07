@@ -1,4 +1,5 @@
 import type { Finding, Rule, Severity } from "../types";
+import type { FnRegion } from "../anchor";
 import {
   findField,
   getConstraintModel,
@@ -908,6 +909,92 @@ const unboundTokenMint: Rule = {
   },
 };
 
+/**
+ * SOL-014: Insecure On-Chain Randomness
+ *
+ * A handler derives an outcome from public on-chain entropy — `Clock::get()`,
+ * `unix_timestamp`, `.slot`, recent blockhash / slot-hashes — reduced with a
+ * modulo/bitmask/remainder, in the SAME handler that moves value. That
+ * entropy is predictable: anyone can simulate the outcome off-chain and only
+ * submit winning transactions, and validators can nudge slots. This is the
+ * class behind repeated exploits of on-chain games, lotteries and raffles.
+ *
+ * Precision guards: the entropy read and the reduction must appear within a
+ * few lines of each other (kills false hits on handlers that use the clock
+ * for deadline checks and do unrelated arithmetic elsewhere), value must
+ * actually move in the handler, and regions using a real randomness oracle
+ * (Switchboard VRF, Orao) are suppressed.
+ */
+const insecureRandomness: Rule = {
+  id: "SOL-014",
+  name: "Insecure On-Chain Randomness",
+  severity: "MEDIUM",
+  description:
+    "This handler derives an outcome from public on-chain entropy (clock slot/timestamp, recent blockhash, or slot-hashes) reduced via modulo/bitmask, and moves value based on it. That entropy is predictable — attackers can simulate the outcome off-chain and only submit winning plays, and validators can influence slots. Use a verifiable randomness oracle (Switchboard VRF, Orao) or a commit-reveal scheme instead.",
+  check(fileContent, filePath) {
+    const findings: Finding[] = [];
+    const lines = splitLines(fileContent);
+    const model = getConstraintModel(fileContent);
+    const regions: FnRegion[] = model.regions.length
+      ? model.regions
+      : [{ start: 0, end: fileContent.length, contextType: null, implType: null }];
+
+    const entropyRe =
+      /Clock::get\(\)|Clock::from_account_info|\bunix_timestamp\b|recent_blockhash|recent_blockhashes|\bslot_hashes\b|\bSlotHashes\b|\.slot\b/;
+    const reduceRe =
+      /[%]|\bgen_range\b|\bchecked_rem\b|\brem_euclid\b|&\s*\(?(?:0x[0-9a-fA-F]+|0b[01]+|\(?1\s*<<)/;
+    const valueRe =
+      /token::(?:transfer|transfer_checked|mint_to|burn)\b|system_program::transfer\b|\btransfer_checked\s*\(|try_borrow_mut_lamports|\*\*[^\n]*lamports/;
+    const oracleRe =
+      /switchboard|\bvrf\b|VrfAccount|randomness_account|RandomnessAccount|\borao\b|get_value\(/i;
+
+    const PROXIMITY_LINES = 6;
+
+    for (const region of regions) {
+      if (inRanges(region.start, model.testRanges)) continue;
+
+      const regionLines: { idx: number; text: string }[] = [];
+      let off = 0;
+      for (let i = 0; i < lines.length; i++) {
+        const start = off;
+        const end = off + lines[i].length;
+        if (end >= region.start && start < region.end) {
+          regionLines.push({ idx: i, text: stripLineComments(lines[i]) });
+        }
+        off = end + 1;
+      }
+
+      const entropyIdx = regionLines
+        .filter((l) => entropyRe.test(l.text))
+        .map((l) => l.idx);
+      if (entropyIdx.length === 0) continue;
+      const reduceIdx = regionLines
+        .filter((l) => reduceRe.test(l.text))
+        .map((l) => l.idx);
+      if (reduceIdx.length === 0) continue;
+      if (!regionLines.some((l) => valueRe.test(l.text))) continue;
+      if (regionLines.some((l) => oracleRe.test(l.text))) continue;
+
+      const hit = entropyIdx.find((e) =>
+        reduceIdx.some((r) => Math.abs(r - e) <= PROXIMITY_LINES)
+      );
+      if (hit === undefined) continue;
+
+      findings.push(
+        makeFinding(
+          insecureRandomness,
+          filePath,
+          hit + 1,
+          lines[hit],
+          insecureRandomness.description
+        )
+      );
+    }
+
+    return findings;
+  },
+};
+
 export const rules: Rule[] = [
   missingSignerCheck,
   uncheckedDeserialization,
@@ -920,12 +1007,69 @@ export const rules: Rule[] = [
   insecureAccountClosure,
   initIfNeededReinit,
   missingRentExemptCheck,
+  insecureRandomness,
 ];
 
 /**
  * Opt-in rules that are too noisy for the default ruleset (see each rule's
  * comment). Included only when the CLI is run with `--experimental`.
  */
-export const experimentalRules: Rule[] = [duplicateMutableAccounts, unboundTokenMint];
+/**
+ * SOL-015: Mint/Freeze Authority Never Revoked (experimental)
+ *
+ * A mint is initialized and no `set_authority` revocation appears anywhere in
+ * the file. A retained mint authority can inflate supply at will; a retained
+ * freeze authority can freeze any holder's tokens. This is the classic token
+ * rug vector and one of the most common trust failures in launched tokens.
+ *
+ * Ships behind --experimental for two reasons: (1) revocation may live in a
+ * different source file of the same project, and this engine analyzes one
+ * file at a time; (2) protocol-controlled mints (game currencies, rebasing
+ * assets) retain authority *deliberately* — this is a trust/centralization
+ * finding, not necessarily an exploitable bug.
+ */
+const unrevokedMintAuthority: Rule = {
+  id: "SOL-015",
+  name: "Mint/Freeze Authority Never Revoked",
+  severity: "MEDIUM",
+  description:
+    "A mint is initialized here and no set_authority revocation appears anywhere in this file. A retained mint authority can inflate supply at will; a retained freeze authority can freeze holders' tokens — the classic rug vector. If the design intends a fixed-supply / community token, revoke with spl_token set_authority (AuthorityType::MintTokens and AuthorityType::FreezeAccount → None). Note: revocation may live in another file of this project, and protocol-controlled mints may retain authority deliberately.",
+  check(fileContent, filePath) {
+    const findings: Finding[] = [];
+    const lines = splitLines(fileContent);
+    const model = getConstraintModel(fileContent);
+    const stripped = stripLineComments(fileContent);
+
+    const initRe =
+      /\binitialize_mint\b|\bInitializeMint2?\b|mint::authority\s*=|mint::freeze_authority\s*=/;
+    const revokeRe = /\bset_authority\b|\bSetAuthority\b/;
+
+    if (!initRe.test(stripped) || revokeRe.test(stripped)) return findings;
+
+    for (let i = 0; i < lines.length; i++) {
+      const offset = lineOffset(lines, i);
+      if (inRanges(offset, model.testRanges)) continue;
+      if (!initRe.test(stripLineComments(lines[i]))) continue;
+      findings.push(
+        makeFinding(
+          unrevokedMintAuthority,
+          filePath,
+          i + 1,
+          lines[i],
+          unrevokedMintAuthority.description
+        )
+      );
+      break; // one finding per file is enough to prompt review
+    }
+
+    return findings;
+  },
+};
+
+export const experimentalRules: Rule[] = [
+  duplicateMutableAccounts,
+  unboundTokenMint,
+  unrevokedMintAuthority,
+];
 
 export default rules;

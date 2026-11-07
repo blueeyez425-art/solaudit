@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-10-24T11:07:55.530Z",
+  "generatedAt": "2026-11-06T12:27:26.344Z",
   "aggregate": {
-    "truePositives": 13,
+    "truePositives": 14,
     "falsePositives": 0,
     "falseNegatives": 0,
     "precision": 1,
@@ -9,8 +9,8 @@
     "f1": 1
   },
   "knownGaps": {
-    "total": 1,
-    "correctlyEmpty": 1
+    "total": 2,
+    "correctlyEmpty": 2
   },
   "samples": [
     {
@@ -224,6 +224,42 @@
       "falseNegatives": [],
       "isKnownGap": false,
       "vulnClass": "none"
+    },
+    {
+      "file": "sol-014-insecure-randomness.rs",
+      "expectedRuleIds": [
+        "SOL-014"
+      ],
+      "foundRuleIds": [
+        "SOL-014"
+      ],
+      "truePositives": [
+        "SOL-014"
+      ],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": false,
+      "vulnClass": "insecure-onchain-randomness"
+    },
+    {
+      "file": "sol-014-safe-vrf.rs",
+      "expectedRuleIds": [],
+      "foundRuleIds": [],
+      "truePositives": [],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": false,
+      "vulnClass": "none"
+    },
+    {
+      "file": "gap-003-unrevoked-mint-authority.rs",
+      "expectedRuleIds": [],
+      "foundRuleIds": [],
+      "truePositives": [],
+      "falsePositives": [],
+      "falseNegatives": [],
+      "isKnownGap": true,
+      "vulnClass": "unrevoked-mint-authority"
     }
   ]
 }

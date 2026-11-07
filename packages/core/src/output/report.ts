@@ -1,4 +1,5 @@
 import type { Finding, ScanResult, Severity } from "../types";
+import { SOLAUDIT_VERSION } from "../version";
 
 const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
@@ -36,12 +37,18 @@ const SEVERITY_ORDER: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
 export function printReport(result: ScanResult): void {
   const timestamp = new Date().toISOString();
 
-  console.log(`${BOLD}${CYAN}SolAudit${RESET} ${DIM}v0.3.2 — static analysis for Anchor/Solana programs${RESET}`);
+  console.log(`${BOLD}${CYAN}SolAudit${RESET} ${DIM}v${SOLAUDIT_VERSION} — static analysis for Anchor/Solana programs${RESET}`);
   console.log(`${DIM}Scanned ${result.scannedFiles} file(s) at ${timestamp}${RESET}`);
   console.log(`${GRAY}${"─".repeat(70)}${RESET}`);
 
   if (result.findings.length === 0) {
     console.log(`${GREEN}${BOLD}✔ No issues found.${RESET}`);
+    console.log(
+      `${DIM}  A clean scan means none of SolAudit's known bug classes were detected — not that the program is safe.${RESET}`
+    );
+    console.log(
+      `${DIM}  Logic flaws, economic attacks, and unknown vulnerability classes still require manual review or an audit.${RESET}`
+    );
   } else {
     const grouped = new Map<Severity, Finding[]>();
     for (const finding of result.findings) {

@@ -24,8 +24,9 @@ Options:
   --sarif                 Print scan results as SARIF 2.1.0 JSON (for GitHub code scanning)
   --min-severity <level>  Only report findings at or above this severity
                           (CRITICAL | HIGH | MEDIUM | LOW | INFO)
-  --experimental          Also run experimental rules (e.g. SOL-012 duplicate
-                          mutable accounts). Higher signal, more false positives.
+  --experimental          Also run experimental rules (SOL-012 duplicate mutable
+                          accounts, SOL-013 unbound token mint, SOL-015 unrevoked
+                          mint authority). Higher signal, more false positives.
   --include-tests         Also scan test/fuzz/fixture/example code (skipped by
                           default; findings there are rarely actionable)
   --help                  Show this help message

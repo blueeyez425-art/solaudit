@@ -211,10 +211,10 @@ describe("SOL-011 Missing Rent-Exemption Check", () => {
 });
 
 describe("rules registry", () => {
-  test("exposes exactly 11 default rules with unique ids", () => {
-    expect(rules.length).toBe(11);
+  test("exposes exactly 12 default rules with unique ids", () => {
+    expect(rules.length).toBe(12);
     const ids = new Set(rules.map((r) => r.id));
-    expect(ids.size).toBe(11);
+    expect(ids.size).toBe(12);
   });
 
   test("experimental rules are excluded from the default set", () => {
@@ -665,5 +665,114 @@ describe("0.3.2 — SolScape ground-truth regression tests", () => {
     `;
     const findings = ruleById("SOL-009").check(src, "test.rs");
     expect(findings.length).toBe(1);
+  });
+});
+
+describe("SOL-014 Insecure On-Chain Randomness", () => {
+  test("flags a slot-derived outcome that gates a payout", () => {
+    const src = `
+      pub fn play(ctx: Context<Play>, guess: u8) -> Result<()> {
+        let clock = Clock::get()?;
+        let roll = clock.slot % 2;
+        if roll == guess as u64 {
+          system_program::transfer(cpi_ctx, payout)?;
+        }
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-014").check(src, "test.rs");
+    expect(findings.length).toBe(1);
+    expect(findings[0].ruleId).toBe("SOL-014");
+  });
+
+  test("flags timestamp-derived outcomes too", () => {
+    const src = `
+      pub fn draw(ctx: Context<Draw>) -> Result<()> {
+        let ts = Clock::get()?.unix_timestamp as u64;
+        let winner = ts % 100;
+        token::transfer(cpi_ctx, prize)?;
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-014").check(src, "test.rs");
+    expect(findings.length).toBe(1);
+  });
+
+  test("does not flag clock used only for a deadline check", () => {
+    const src = `
+      pub fn settle(ctx: Context<Settle>) -> Result<()> {
+        let clock = Clock::get()?;
+        require!(clock.unix_timestamp >= ctx.accounts.market.deadline, ErrorCode::TooEarly);
+        token::transfer(cpi_ctx, amount)?;
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-014").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+
+  test("does not flag oracle-based randomness (Switchboard VRF)", () => {
+    const src = `
+      pub fn play(ctx: Context<Play>, guess: u8) -> Result<()> {
+        let randomness = ctx.accounts.randomness_account.get_value()?;
+        let roll = (randomness[0] as u64) % 2;
+        if roll == guess as u64 {
+          system_program::transfer(cpi_ctx, payout)?;
+        }
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-014").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+
+  test("does not flag entropy use when no value moves", () => {
+    const src = `
+      pub fn shuffle(ctx: Context<Shuffle>) -> Result<()> {
+        let clock = Clock::get()?;
+        let offset = clock.slot % 10;
+        ctx.accounts.queue.rotate = offset as u8;
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-014").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+});
+
+describe("SOL-015 Mint/Freeze Authority Never Revoked", () => {
+  test("flags initialize_mint with no set_authority anywhere", () => {
+    const src = `
+      pub fn create_token(ctx: Context<CreateToken>) -> Result<()> {
+        token::initialize_mint(cpi_ctx, 9, &ctx.accounts.authority.key(), Some(&ctx.accounts.authority.key()))?;
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-015").check(src, "test.rs");
+    expect(findings.length).toBe(1);
+    expect(findings[0].ruleId).toBe("SOL-015");
+  });
+
+  test("does not flag when authority is revoked", () => {
+    const src = `
+      pub fn create_token(ctx: Context<CreateToken>) -> Result<()> {
+        token::initialize_mint(cpi_ctx, 9, &ctx.accounts.authority.key(), None)?;
+        token::set_authority(revoke_ctx, AuthorityType::MintTokens, None)?;
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-015").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+
+  test("does not flag files that never initialize a mint", () => {
+    const src = `
+      pub fn transfer_tokens(ctx: Context<TransferTokens>, amount: u64) -> Result<()> {
+        token::transfer(cpi_ctx, amount)?;
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-015").check(src, "test.rs");
+    expect(findings.length).toBe(0);
   });
 });
