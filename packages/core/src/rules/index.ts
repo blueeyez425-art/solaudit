@@ -46,6 +46,19 @@ function stripLineComments(text: string): string {
     .join("\n");
 }
 
+/**
+ * field.line points at the start of a field's attribute/doc block. Walk
+ * forward to the actual `pub <name>` declaration so findings show the
+ * right line and snippet.
+ */
+function fieldDeclLine(lines: string[], field: { name: string; line: number }): number {
+  const declRe = new RegExp("\\b(pub\\s+)?" + field.name + "\\s*:");
+  for (let i = field.line - 1; i < Math.min(lines.length, field.line + 12); i++) {
+    if (declRe.test(stripLineComments(lines[i]))) return i + 1;
+  }
+  return field.line;
+}
+
 /** SOL-001: Missing Signer Check */
 const missingSignerCheck: Rule = {
   id: "SOL-001",
@@ -995,6 +1008,175 @@ const insecureRandomness: Rule = {
   },
 };
 
+/**
+ * SOL-016: init Without seeds — Caller-Chosen Address
+ *
+ * In Anchor, `#[account(init, payer = ..., space = ...)]` without a
+ * `seeds = [...]` binding means the new account's address is a fresh
+ * keypair supplied by the *caller*. Anyone can create unlimited instances
+ * of that account type — including a second "global config" pointing at
+ * attacker-controlled state. MixBytes' incident review lists multiple
+ * global configuration accounts as a recurring audit finding; PDA-derived
+ * addresses are the canonical fix because the program itself proves the
+ * address.
+ *
+ * Suppressions: `init_if_needed` is SOL-010's territory (reinit is the
+ * worse issue and fires regardless of seeds). `token::` and
+ * `associated_token::` initializations derive their addresses internally,
+ * so init-without-seeds is correct there.
+ */
+const nonPdaInit: Rule = {
+  id: "SOL-016",
+  name: "init Without seeds — Caller-Chosen Address",
+  severity: "MEDIUM",
+  description:
+    "This singleton-style state account (config/pool/market/treasury-like) is created with `init` but no `seeds = [...]` binding, so its address is a caller-supplied keypair — anyone can create unlimited competing instances (including a second 'global config' they control) and trick integrators or other instructions into reading the wrong one. Derive the address from seeds (PDA) so the program proves the address itself. Scoped to singleton-suggestive names only: per-user accounts initialized from fresh keypairs are a legitimate pattern and are not flagged.",
+  check(fileContent, filePath) {
+    const findings: Finding[] = [];
+    const lines = splitLines(fileContent);
+    const model = getConstraintModel(fileContent);
+
+    for (const struct of model.structs) {
+      if (inRanges(struct.start, model.testRanges)) continue;
+      for (const field of struct.fields) {
+        if (!field.hasInit) continue;
+        if (/\binit_if_needed\b/.test(field.attrs)) continue; // SOL-010 covers this
+        if (/\bseeds\s*=/.test(field.attrs)) continue; // PDA-derived: address is proven
+        if (/associated_token::|token::/.test(field.attrs)) continue; // ATA/token init derives internally
+        // Only singleton/global state is dangerous when caller-addressed:
+        // per-user accounts created from fresh keypairs are a legitimate
+        // design. Scope to names that imply a single canonical instance.
+        const singletonRe =
+          /config|global|state|pool|market|treasury|registry|settings|params|counter/i;
+        if (
+          !singletonRe.test(field.name) &&
+          !singletonRe.test(struct.name) &&
+          !singletonRe.test(field.genericArg ?? "")
+        )
+          continue;
+        // If the same struct already proves a PDA-bound account (seeds on a
+        // sibling field), the instruction is anchored to existing program
+        // state — e.g. an admin-gated "add bank/pool" flow that creates a
+        // child object from a fresh keypair (marginfi's add_pool does this
+        // deliberately, gated by the seeds-bound FeeState). The spoofing
+        // risk only materializes when nothing in the instruction is proven.
+        const structHasPda = struct.fields.some((f) =>
+          /\bseeds\s*=/.test(f.attrs)
+        );
+        if (structHasPda) continue;
+        const declLine = fieldDeclLine(lines, field);
+        findings.push(
+          makeFinding(
+            nonPdaInit,
+            filePath,
+            declLine,
+            lines[declLine - 1] ?? "",
+            nonPdaInit.description
+          )
+        );
+      }
+    }
+    return findings;
+  },
+};
+
+/**
+ * SOL-017: Unvalidated Oracle / Price Feed
+ *
+ * Two patterns behind ~$8M+ of real incidents:
+ *
+ * A) An oracle/price-feed account is passed as raw AccountInfo (or
+ *    UncheckedAccount) with no constraint binding, and nothing in the file
+ *    validates its owner/program against a known oracle. An attacker
+ *    substitutes a fake feed and prices collateral at will — this is the
+ *    Loopscale ($6M) failure mode. File-level heuristic: any owner/key
+ *    comparison against an oracle identifier anywhere in the file counts
+ *    as validation (favoring precision over recall).
+ *
+ * B) `get_price_unchecked` / `get_ema_price_unchecked` reads a Pyth price
+ *    with no staleness bound. A pathological or stale quote is accepted as
+ *    current — the GoonFi failure mode. `get_price_no_older_than` is the
+ *    safe API.
+ */
+const unvalidatedOracle: Rule = {
+  id: "SOL-017",
+  name: "Unvalidated Oracle / Price Feed",
+  severity: "HIGH",
+  description:
+    "An oracle/price-feed account is accepted without proof it is the intended feed (raw AccountInfo with no constraint binding and no owner/program validation visible in this file — the Loopscale $6M class), or a Pyth price is read via get_price_unchecked with no staleness bound (the GoonFi class). Validate the feed's owner/program ID, bind it to config via seeds/address/has_one, and read prices with get_price_no_older_than.",
+  check(fileContent, filePath) {
+    const findings: Finding[] = [];
+    const lines = splitLines(fileContent);
+    const model = getConstraintModel(fileContent);
+    const stripped = stripLineComments(fileContent);
+
+    const oracleNameRe =
+      /oracle|price_?feed|pyth|switchboard|\bfeed_account\b/i;
+    // Any visible attempt anywhere in the file to pin the feed's identity
+    // counts as validation — oracle validation often lives in handler bodies
+    // or shared helpers rather than the accounts struct.
+    const fileValidatesOracle =
+      /\.owner\s*==|require_keys_eq!\s*\([^)]*(oracle|feed|pyth|switchboard)|pyth_solana_receiver|switchboard_solana|\bPYTH\b|\bSWITCHBOARD\b|assert_oracle/i.test(
+        stripped
+      );
+
+    if (!fileValidatesOracle) {
+      for (const struct of model.structs) {
+        if (inRanges(struct.start, model.testRanges)) continue;
+        // CPI passthrough: when the struct pins a target program by
+        // `address =`, raw accounts forwarded to that program are validated
+        // by it (marginfi → Solend integration passes pyth/switchboard
+        // accounts this way; Solend validates its own accounts).
+        const structPinsProgram = struct.fields.some((f) =>
+          /\baddress\s*=/.test(f.attrs)
+        );
+        if (structPinsProgram) continue;
+        for (const field of struct.fields) {
+          if (!field.isRaw) continue;
+          if (field.validated) continue;
+          if (!oracleNameRe.test(field.name)) continue;
+          const declLine = fieldDeclLine(lines, field);
+          findings.push(
+            makeFinding(
+              unvalidatedOracle,
+              filePath,
+              declLine,
+              lines[declLine - 1] ?? "",
+              unvalidatedOracle.description
+            )
+          );
+        }
+      }
+    }
+
+    // Pattern B: staleness-free price reads (precise, API-level).
+    for (let i = 0; i < lines.length; i++) {
+      if (inRanges(lineOffset(lines, i), model.testRanges)) continue;
+      if (/get_price_unchecked|get_ema_price_unchecked/.test(stripLineComments(lines[i]))) {
+        // Suppress when the account was run through a checked loader /
+        // verifier in the preceding lines (e.g. marginfi's
+        // load_price_update_v2_checked in its client-side helper).
+        const window = lines
+          .slice(Math.max(0, i - 10), i)
+          .map((l) => stripLineComments(l))
+          .join("\n");
+        if (/_checked\b|\bvalidat|\bverify|\bassert/.test(window)) continue;
+        findings.push(
+          makeFinding(
+            unvalidatedOracle,
+            filePath,
+            i + 1,
+            lines[i],
+            unvalidatedOracle.description
+          )
+        );
+      }
+    }
+
+    return findings;
+  },
+};
+
 export const rules: Rule[] = [
   missingSignerCheck,
   uncheckedDeserialization,
@@ -1008,6 +1190,8 @@ export const rules: Rule[] = [
   initIfNeededReinit,
   missingRentExemptCheck,
   insecureRandomness,
+  nonPdaInit,
+  unvalidatedOracle,
 ];
 
 /**

@@ -108,6 +108,8 @@ bun run dev
 | `SOL-010` | MEDIUM | Reinitialization Risk via init_if_needed | `#[account(init_if_needed, ...)]` without canonical PDA seeds / `has_one` constraints, letting a pre-existing attacker-crafted account pass as freshly initialized |
 | `SOL-011` | MEDIUM | Missing Rent-Exemption Check | A partial lamport withdrawal with no nearby `Rent::get()?.minimum_balance(...)` check, risking runtime garbage-collection of the account |
 | `SOL-014` | MEDIUM | Insecure On-Chain Randomness | A handler derives an outcome from public on-chain entropy (clock slot/timestamp, recent blockhash, slot-hashes) reduced via modulo/bitmask, in the same handler that moves value — predictable "randomness" attackers can grind or pre-compute. Requires entropy + reduction within a few lines + actual value movement, and suppresses regions using a real randomness oracle (Switchboard VRF, Orao) |
+| `SOL-016` | MEDIUM | init Without seeds — Caller-Chosen Address | Singleton-style state (config/pool/market/treasury-like) created via bare `init` with no `seeds` binding — the address is a caller-chosen keypair, so unlimited competing instances can exist (the "multiple global configs" audit class). Scoped to singleton-suggestive names; skips `init_if_needed` (SOL-010), `token::`/`associated_token::` inits, and structs already anchored by a PDA-bound account |
+| `SOL-017` | HIGH | Unvalidated Oracle / Price Feed | A raw oracle/feed account accepted with no identity validation visible anywhere in the file (the Loopscale $6M class), or a Pyth price read via `get_price_unchecked` with no staleness bound (the GoonFi class). Suppressed when the feed is validated in-handler, CPI-forwarded to an `address`-pinned program, or loaded through a checked loader |
 
 Each rule is implemented as real regex/line-scanning logic in [`packages/core/src/rules/index.ts`](./packages/core/src/rules/index.ts) — see that file (and its accompanying [tests](./packages/core/src/rules/index.test.ts)) for the exact matching heuristics and false-positive guards.
 
@@ -147,6 +149,14 @@ Fixture revisions disclosed: SolScape's `withdraw_treasury` was rewritten to the
 - Benchmark suite extended to 17 samples (vulnerable coin flip, VRF-safe control, unrevoked-mint known gap): **100% precision / 100% recall / 100% F1 maintained**; SolScape ground truth still 9/9 with `--experimental`, hardened build still clean.
 - Housekeeping: the CLI banner version no longer drifts (single source of truth), and a clean scan now prints an explicit reminder that 0 findings ≠ 0 bugs.
 
+### 0.3.5
+
+- **New default rule `SOL-016` (init Without seeds — Caller-Chosen Address)** — flags singleton-style state accounts created via bare `init` with no `seeds` binding: the address is a caller-chosen keypair, so anyone can create unlimited competing instances — the "multiple global config accounts" class from production audit reports. Precision-scoped to singleton-suggestive names; skips `init_if_needed` (SOL-010's territory), `token::`/`associated_token::` inits (address derived internally), and structs already anchored by a seeds-bound account (admin-gated child creation, e.g. marginfi's `add_pool`).
+- **New default rule `SOL-017` (Unvalidated Oracle / Price Feed)** — two patterns behind ~$8M+ of real incidents: (A) a raw oracle/price-feed account with no identity validation anywhere in the file (the Loopscale $6M class: attacker substitutes a fake feed and prices collateral arbitrarily), suppressed when the feed is validated in-handler or forwarded to an `address`-pinned CPI program that validates its own accounts (the marginfi → Solend pattern); (B) `get_price_unchecked`/`get_ema_price_unchecked` reads with no staleness bound (the GoonFi class), suppressed when preceded by a checked loader.
+- **Test-path detection now excludes `mocks/` directories** — marginfi's drift-/solend-/juplend-mocks are intentionally vulnerable test doubles and were inflating real-protocol scans.
+- **Fix: struct-driven findings now report the field's declaration line** instead of the start of its attribute/doc block.
+- Validation: benchmark extended to 21 samples — **100% precision / 100% recall / 100% F1 maintained**, experimental gap coverage 2/2; **zero new-rule findings on marginfi's main program**; SolScape ground truth unchanged (9/9 with `--experimental`, hardened build clean). One benchmark label revised (`sol-008-vulnerable` now also expects SOL-017 — its raw, unvalidated `price_feed` is exactly the targeted pattern); revision documented inline in [`benchmark/labels.json`](./benchmark/labels.json).
+
 ## What SolAudit is (and isn't)
 
 SolAudit is a **first-pass scanner for known Solana vulnerability classes**, not an audit.
@@ -161,7 +171,7 @@ SolAudit is a **first-pass scanner for known Solana vulnerability classes**, not
 - **Human** (default) — colorized terminal report grouped by severity.
 - **JSON** (`--json`) — the full `ScanResult` object (`scannedFiles`, `findings[]`, `summary`).
 - **SARIF** (`--sarif`) — [SARIF 2.1.0](https://sarifweb.azurewebsites.net/) output compatible with GitHub Code Scanning.
-- **Experimental rules** (`--experimental`) — opt into noisier, higher-signal heuristics (`SOL-012` Duplicate Mutable Accounts, `SOL-013` Token Account Not Bound to Mint). Recommended for deep manual reviews rather than CI gates.
+- **Experimental rules** (`--experimental`) — opt into noisier, higher-signal heuristics (`SOL-012` Duplicate Mutable Accounts, `SOL-013` Token Account Not Bound to Mint, `SOL-015` Mint/Freeze Authority Never Revoked). Recommended for deep manual reviews rather than CI gates.
 
 ## GitHub Actions
 

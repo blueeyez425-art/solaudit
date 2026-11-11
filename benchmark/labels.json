@@ -77,11 +77,12 @@
     {
       "file": "sol-008-vulnerable.rs",
       "expectedRuleIds": [
-        "SOL-008"
+        "SOL-008",
+        "SOL-017"
       ],
       "isKnownGap": false,
       "vulnClass": "missing-owner-check",
-      "notes": "Raw AccountInfo used to read oracle price data with no .owner validation anywhere in the instruction."
+      "notes": "Raw AccountInfo used to read oracle price data with no .owner validation anywhere in the instruction. (0.3.5 label revision: SOL-017 unvalidated-oracle now also expected \u2014 the sample's raw, unvalidated price_feed AccountInfo is exactly the Loopscale-class pattern the rule targets.)"
     },
     {
       "file": "sol-009-closed-account-revival.rs",
@@ -146,6 +147,38 @@
       "isKnownGap": true,
       "vulnClass": "unrevoked-mint-authority",
       "notes": "A mint is initialized with mint and freeze authorities that are never revoked (no set_authority anywhere) \u2014 the classic token rug vector (indefinite inflation / holder freezing). As of 0.3.4 the experimental SOL-015 rule covers this class behind --experimental; it remains excluded from the default ruleset because revocation may live in a different source file of the same project and protocol-controlled mints retain authority deliberately."
+    },
+    {
+      "file": "sol-016-vulnerable.rs",
+      "expectedRuleIds": [
+        "SOL-016"
+      ],
+      "isKnownGap": false,
+      "vulnClass": "init-without-seeds",
+      "notes": "Global config created via bare `init` \u2014 caller-chosen keypair address, unlimited duplicate instances. (0.3.5 addition.)"
+    },
+    {
+      "file": "sol-016-safe.rs",
+      "expectedRuleIds": [],
+      "isKnownGap": false,
+      "vulnClass": "none",
+      "notes": "Negative case: identical config created via PDA seeds + bump."
+    },
+    {
+      "file": "sol-017-vulnerable.rs",
+      "expectedRuleIds": [
+        "SOL-017"
+      ],
+      "isKnownGap": false,
+      "vulnClass": "unvalidated-oracle",
+      "notes": "Raw oracle AccountInfo with no validation anywhere in the file (Loopscale class) plus get_price_unchecked (GoonFi class). At least one SOL-017 finding expected. (0.3.5 addition.)"
+    },
+    {
+      "file": "sol-017-safe.rs",
+      "expectedRuleIds": [],
+      "isKnownGap": false,
+      "vulnClass": "none",
+      "notes": "Negative case: feed pinned via address constraint; price read via get_price_no_older_than."
     }
   ]
 }

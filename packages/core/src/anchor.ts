@@ -325,7 +325,7 @@ export function lineOffset(lines: string[], idx: number): number {
  */
 export function isTestLikePath(filePath: string): boolean {
   const p = filePath.replace(/\\/g, "/");
-  if (/(^|\/)(tests?|test[-_]utils?|testing|fuzz|fixtures?|benches|benchmarks|examples?)(\/|$)/i.test(p)) return true;
+  if (/(^|\/)(tests?|test[-_]utils?|testing|fuzz|fixtures?|benches|benchmarks|examples?|mocks?|[a-z0-9]+[-_]mocks?)(\/|$)/i.test(p)) return true;
   const base = (p.split("/").pop() || "").toLowerCase();
   return (
     /^(tests|e2e)\.rs$/.test(base) ||

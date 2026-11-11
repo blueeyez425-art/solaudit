@@ -211,10 +211,10 @@ describe("SOL-011 Missing Rent-Exemption Check", () => {
 });
 
 describe("rules registry", () => {
-  test("exposes exactly 12 default rules with unique ids", () => {
-    expect(rules.length).toBe(12);
+  test("exposes exactly 14 default rules with unique ids", () => {
+    expect(rules.length).toBe(14);
     const ids = new Set(rules.map((r) => r.id));
-    expect(ids.size).toBe(12);
+    expect(ids.size).toBe(14);
   });
 
   test("experimental rules are excluded from the default set", () => {
@@ -773,6 +773,131 @@ describe("SOL-015 Mint/Freeze Authority Never Revoked", () => {
       }
     `;
     const findings = ruleById("SOL-015").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+});
+
+
+describe("SOL-016 init Without seeds — Caller-Chosen Address", () => {
+  test("flags a PDA-free init of global config state", () => {
+    const src = `
+      #[derive(Accounts)]
+      pub struct Initialize<'info> {
+        #[account(init, payer = admin, space = 8 + 64)]
+        pub config: Account<'info, Config>,
+        #[account(mut)]
+        pub admin: Signer<'info>,
+        pub system_program: Program<'info, System>,
+      }
+    `;
+    const findings = ruleById("SOL-016").check(src, "test.rs");
+    expect(findings.length).toBe(1);
+    expect(findings[0].ruleId).toBe("SOL-016");
+  });
+
+  test("passes when init is bound to seeds (PDA-derived)", () => {
+    const src = `
+      #[derive(Accounts)]
+      pub struct Initialize<'info> {
+        #[account(init, payer = admin, space = 8 + 64, seeds = [b"config"], bump)]
+        pub config: Account<'info, Config>,
+        #[account(mut)]
+        pub admin: Signer<'info>,
+        pub system_program: Program<'info, System>,
+      }
+    `;
+    const findings = ruleById("SOL-016").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+
+  test("does not flag associated_token init (address derived internally)", () => {
+    const src = `
+      #[derive(Accounts)]
+      pub struct Deposit<'info> {
+        #[account(
+          init_if_needed,
+          payer = user,
+          associated_token::mint = mint,
+          associated_token::authority = user,
+        )]
+        pub user_ata: Account<'info, TokenAccount>,
+        #[account(mut)]
+        pub user: Signer<'info>,
+        pub system_program: Program<'info, System>,
+      }
+    `;
+    const findings = ruleById("SOL-016").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+
+  test("leaves init_if_needed to SOL-010 (no double-fire)", () => {
+    const src = `
+      #[derive(Accounts)]
+      pub struct Join<'info> {
+        #[account(init_if_needed, payer = user, space = 8 + 32)]
+        pub profile: Account<'info, Profile>,
+        #[account(mut)]
+        pub user: Signer<'info>,
+        pub system_program: Program<'info, System>,
+      }
+    `;
+    const findings = ruleById("SOL-016").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+});
+
+describe("SOL-017 Unvalidated Oracle / Price Feed", () => {
+  test("flags a raw oracle AccountInfo with no validation anywhere in the file", () => {
+    const src = `
+      #[derive(Accounts)]
+      pub struct Borrow<'info> {
+        /// CHECK: price feed
+        pub oracle: AccountInfo<'info>,
+        #[account(mut)]
+        pub vault: Account<'info, Vault>,
+        pub user: Signer<'info>,
+      }
+    `;
+    const findings = ruleById("SOL-017").check(src, "test.rs");
+    expect(findings.some((f) => f.ruleId === "SOL-017")).toBe(true);
+  });
+
+  test("passes when the feed identity is validated in the handler", () => {
+    const src = `
+      #[derive(Accounts)]
+      pub struct Borrow<'info> {
+        /// CHECK: validated in handler
+        pub oracle: AccountInfo<'info>,
+        pub user: Signer<'info>,
+      }
+      pub fn borrow(ctx: Context<Borrow>) -> Result<()> {
+        require_keys_eq!(*ctx.accounts.oracle.owner, PYTH, ErrorCode::BadOracle);
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-017").check(src, "test.rs");
+    expect(findings.length).toBe(0);
+  });
+
+  test("flags get_price_unchecked (no staleness bound)", () => {
+    const src = `
+      pub fn swap(ctx: Context<Swap>) -> Result<()> {
+        let price = ctx.accounts.price_update.get_price_unchecked(&feed_id)?;
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-017").check(src, "test.rs");
+    expect(findings.length).toBe(1);
+  });
+
+  test("passes get_price_no_older_than (staleness-bounded)", () => {
+    const src = `
+      pub fn swap(ctx: Context<Swap>) -> Result<()> {
+        let price = ctx.accounts.price_update.get_price_no_older_than(&Clock::get()?, 60, &feed_id)?;
+        Ok(())
+      }
+    `;
+    const findings = ruleById("SOL-017").check(src, "test.rs");
     expect(findings.length).toBe(0);
   });
 });
